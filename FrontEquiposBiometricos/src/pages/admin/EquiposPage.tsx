@@ -65,27 +65,117 @@ const PAGE_SIZE = 10;
 interface FormState {
   name: string;
   asset_tag: string;
+  internal_code:string;
+  serial:string;
+  software_identifier:string;
+
   // brand sólo se usa en el form para filtrar los modelos disponibles. NO
   // se envía al backend (la marca es derivada del modelo).
   brand: number;
   equipment_model: number;
+
   branch: number;
+  branch_text: string;
+  department:string;
+  city:string;
+  area:string;
   location: string;
-  purchase_date: string;
+  
+  technology_type:string;
+  biomedical_classification:string;
+  risk_class:RiskClass;
+
+  manufacturer: string;
+  owner:string;
+  client_name:string;
+
+  purchase_date:string;
+  manufacture_date:string;
+  supplier_acquisition: string;
+  start_use_date:string;
+  equipment_cost: string;
+
+  warranty_start_date: string;
+  warranty_end_date: string;
+
+  maintenance_provider:string;
+  maintenance_frequency_months:string;
+  last_preventive: string;
+  next_preventive:string;
+
+  calibration_date: string;
+  calibration_frequency_months: string;
+  last_calibration: string;
+  next_calibration:string;
+
+  electrical_safety_class: string;
+  electrical_safety_type:string;
+
+  invima_registration: string;
+  ecri: string;
+
+  life_use_years: string;
+  
   status: EquipmentStatus;
-  risk_class: RiskClass;
+
+  observations:string;
 }
 
 const empty: FormState = {
   name: "",
   asset_tag: "",
+  internal_code: "",
+  serial: "",
+  software_identifier:"",
+
   brand: 0,
   equipment_model: 0,
+
   branch: 0,
+  branch_text:"",
+  department:"",
+  city:"",
+  area:"",
   location: "",
+
+  technology_type:"",
+  biomedical_classification:"",
+  risk_class:"I",
+
+  manufacturer:"",
+  owner:"",
+  client_name:"",
+
   purchase_date: "",
+  manufacture_date:"",
+  supplier_acquisition:"",
+  start_use_date:"",
+  equipment_cost:"",
+
+  warranty_start_date:"",
+  warranty_end_date:"",
+
+  maintenance_provider:"",
+  maintenance_frequency_months:"",
+  last_preventive:"",
+  next_preventive:"",
+
+  calibration_date:"",
+  calibration_frequency_months:"",
+  last_calibration:"",
+  next_calibration:"",
+
+  electrical_safety_class:"",
+  electrical_safety_type:"",
+
+  invima_registration:"",
+  ecri:"",
+
+  life_use_years:"",
+
   status: "ACTIVE",
-  risk_class: "I",
+
+  observations:"",
 };
 
 type Tab = "equipos" | "catalogo";
@@ -237,15 +327,75 @@ export function EquiposPage() {
     const inferredBrand =
       e.brand ?? resolveBrandIdOfModel(e.equipment_model) ?? 0;
     setForm({
-      name: e.name,
-      asset_tag: e.asset_tag,
+      name: e.name ?? "",
+      asset_tag: e.asset_tag ?? "",
+      internal_code: e.internal_code ?? "",
+      serial:e.serial ?? "",
+      software_identifier: e.software_identifier ?? "",
+
       brand: inferredBrand,
       equipment_model: e.equipment_model,
       branch: e.branch,
-      location: e.location,
-      purchase_date: e.purchase_date,
-      status: e.status,
+      branch_text:e.branch_text ?? "",
+      department:e.department ?? "",
+      city: e.city ?? "",
+      area:e.area ?? "",
+      location: e.location ?? "",
+
+      technology_type:e.technology_type ?? "",
+      biomedical_classification:e.biomedical_classification ?? "",
       risk_class: e.risk_class,
+
+      manufacturer: e.manufacturer ?? "",
+      owner: e.owner ?? "",
+      client_name: e.client_name ?? "",
+
+      purchase_date: e.purchase_date,
+      manufacture_date:e.manufacture_date ?? "",
+      supplier_acquisition: e.supplier_acquisiton ?? "",
+      start_use_date:e.start_use_date ?? "",
+      equipment_cost:
+        e.equipment_cost !== null && e.equipment_cost !== undefined
+          ? String(e.equipment_cost)
+          : "",
+      
+      warranty_start_date: e.warranty_end_date ?? "",
+      warranty_end_date: e.warranty_end_date ?? "",
+
+      maintenance_provider: e.maintenance_provider ?? "",
+      maintenance_frequency_months:
+        e.maintenance_frequency_months !== null && 
+        e.maintenance_frequency_months !== undefined
+          ? String(e.maintenance_frequency_months)
+          : "",
+        last_preventive: e.last_preventive ?? "",
+        next_preventive:e.next_preventive ?? "",
+
+        calibration_date: e.calibration_date ?? "",
+        calibration_frequency_months: 
+          e.calibration_frequenty_months !== null &&
+          e.calibration_frequenty_months !== undefined 
+            ? String(e.calibration_frequenty_months !== undefined)
+            : "",
+          
+      
+      last_calibration: e.last_calibration ?? "",
+      next_calibration: e.next_calibration ?? "",
+
+      electrical_safety_class:e.electrical_safety_class ?? "",
+      electrical_safety_type: e.electrical_safety_type ?? "",
+
+      invima_registration: e.invima_registration ?? "",
+      ecri: e.ecri ?? "",
+
+      life_use_years: 
+        e.life_use_years !== null && e.life_use_years !== undefined
+          ? String(e.life_use_years)
+          : "",
+        
+      status: e.status,
+
+      observations: e.observations ?? "",
     });
     setEditing(e);
   };
@@ -267,12 +417,63 @@ export function EquiposPage() {
     const payload: EquipmentInput = {
       name: form.name,
       asset_tag: form.asset_tag,
+      internal_code:form.internal_code,
+      serial: form.serial,
+      software_identifier: form.software_identifier,
+
       equipment_model: form.equipment_model,
+      
       branch: form.branch,
+      branch_text: form.branch_text,
+      department: form.department,
+      city: form.city,
+      area: form.area,
       location: form.location,
+
+      technology_type: form.technology_type,
+      biomedical_classification:form.biomedical_classification,
+      risk_class:form.risk_class,
+
+      manufacturer: form.manufacturer,
+      owner: form.owner,
+      client_name: form.client_name,
+  
       purchase_date: form.purchase_date,
+      supplier_acquisition: form.supplier_acquisition,
+      equipment_cost:form.equipment_cost,
+      manufacture_date:form.manufacture_date || undefined,
+      start_use_date: form.start_use_date || undefined,
+
+      warranty_start_date:form.warranty_start_date || undefined,
+      warranty_end_date: form.warranty_end_date || undefined,
+
+      maintenance_provider: form.maintenance_provider,
+      maintenance_frequency_months: form.maintenance_frequency_months
+        ? Number(form.maintenance_frequency_months)
+        : undefined,
+      last_preventive: form.last_preventive,
+      next_preventive: form.next_preventive,
+
+      calibration_date: form.calibration_date,
+      calibration_frequency_months: form.calibration_frequency_months
+        ? Number(form.calibration_frequency_months)
+        : undefined,
+      last_calibration: form.last_calibration,
+      next_calibration:form.next_calibration,
+
+      electrical_safety_class: form.electrical_safety_class,
+      electrical_safety_type: form.electrical_safety_type,
+
+      invima_registration: form.invima_registration,
+      ecri:form.ecri,
+
+      life_use_years:form.life_use_years
+        ? Number(form.life_use_years)
+        : undefined,
+
       status: form.status,
-      risk_class: form.risk_class,
+
+      observations:form.observations,
     };
 
     try {
@@ -563,6 +764,14 @@ export function EquiposPage() {
         size="lg"
       >
         <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+          <div className="text-sm font-semibold text-app">
+            <h3 className="text-sm font-semibold text-app">
+              Identificación del equipo
+            </h3>
+            <p className="text-xs text-app-muted">
+              Información básica para identificar el equipo biomédico
+            </p>
+          </div>
           <Input
             label="Nombre"
             value={form.name}
@@ -577,6 +786,39 @@ export function EquiposPage() {
             required
             hint="Código único del equipo (ej. EQ-0001)"
           />
+          <Input 
+          label="Código N.T."
+          value={form.internal_code}
+          onChange={(e) => 
+            setForm({...form, internal_code:e.target.value})
+          }
+          hint="Código interno o número técnico."
+          />
+          <Input
+          label="Serie"
+          value={form.serial}
+          onChange={(e) => 
+            setForm({...form,serial:e.target.value})
+          }
+          />
+          <Input
+          label="Identificador Software"
+          value={form.software_identifier}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              software_identifier: e.target.value,
+            })
+          }
+          />
+          <div className="sm:col-span-2 mt-2">
+            <h3 className="text-sm font-semibold text-app">
+              Clasificación y catálogo
+            </h3>
+            <p className="text-xs text-app-muted">
+              Catálogo, tecnología y clasificación biomédica
+            </p>
+          </div>
           <Select
             label="Sede"
             value={String(form.branch)}
@@ -624,6 +866,35 @@ export function EquiposPage() {
             required
           />
           <Select
+          label="Tipo de tecnología"
+          value={form.technology_type}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              technology_type:e.target.value,
+            })
+          }
+          options={[
+            {value:"ELECTRONIC",label:"Electrónico"},
+            {value:"ELECTROMEDICAL",label:"Electromédico"},
+            {value:"MECHANICAL",label:"Mecánico"},
+            {value:"MIXED",label:"Mixto"},
+            {value:"OTHER",label:"Otro"},
+          ]}
+          placeholder="Seleccione el tipo"
+          />
+          <Input
+          label="Clasificación biomédica"
+          value={form.biomedical_classification}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              biomedical_classification: e.target.value,
+            })
+          }
+          hint="Clasificación utilizada para el equipo."
+          />
+          <Select
             label="Clase de riesgo"
             value={form.risk_class}
             onChange={(e) =>
@@ -636,7 +907,352 @@ export function EquiposPage() {
             required
             hint="Clasificación INVIMA / FDA del dispositivo médico."
           />
-          <Select
+
+          <div className="sm:col-psan-2 mt-2">
+            <h3 className="text-sm font-semibold text-app">
+              Información y ubicación
+            </h3>
+            <p className="text-xs-text-app-muted">
+              Datos generales y ubicación física del equipo.
+            </p>
+          </div>
+          <Input
+          label="Propietario"
+          value={form.owner}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              owner:e.target.value
+            })
+          }
+          />
+          <Input
+          label="Código de calibración"
+          value={form.calibration_date}
+          onChange={(e) =>
+          setForm({
+            ...form,
+            calibration_date:e.target.value
+            })
+          }
+          />
+          <Input
+          label="Fabricante"
+          value={form.manufacturer}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              manufacturer:e.target.value,
+            })
+          }
+          />
+          <Input
+          label="Cliente"
+          value={form.client_name}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              client_name:e.target.value
+            })
+          }
+          />
+          <Input
+          label="Marca/texto"
+          value={form.branch_text}
+          onChange={(e) => 
+            setForm({
+              ...form,
+              branch_text:e.target.value,
+            })
+          }
+          hint="Texto adicional asociado a la marca."
+          />
+          <Input
+          label="Departamento"
+          value={form.department}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              department:e.target.value
+            })
+          }
+          />
+          <Input
+          label="Ciudad"
+          value={form.city}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              city:e.target.value,
+            })
+          }
+          />
+          <Input
+          label="Área"
+          value={form.area}
+          onChange={(e) => 
+            setForm({
+              ...form,
+              area:e.target.value
+            })
+          }
+          />
+           <Input
+            label="Ubicación"
+            value={form.location}
+            onChange={(e) => setForm({ ...form, location: e.target.value })}
+            required
+            className="sm:col-span-2"
+          />
+          <div className="sm:col-span-2 mt-2">
+            <h3 className="text-sm font-semibold text-app">
+              Adquisición
+            </h3>
+            <p className="text-xs text-app-muted">
+              Información relacionada con la adquisición y puesta en funcionamiento.
+            </p>
+          </div>
+           <Input
+            label="Fecha de compra"
+            type="date"
+            value={form.purchase_date}
+            onChange={(e) =>
+              setForm({ ...form, purchase_date: e.target.value })
+            }
+            required
+            className="sm:col-span-2"
+          />
+          <Input
+          label="Fecha de fabricación"
+          type="date"
+          value={form.manufacture_date}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              manufacture_date:e.target.value,
+            })
+          }
+          />
+        <Input
+        label="Fecha inicio funcionamiento"
+        type="date"
+        value={form.start_use_date}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            start_use_date: e.target.value,
+          })
+        }
+        />
+        <Input
+        label="Proveedor de adquisición"
+        value={form.supplier_acquisition}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            supplier_acquisition:e.target.value,
+          })
+        }
+        />
+        <Input
+        label="Costo del equipo"
+        type="number"
+        min="0"
+        step="0.01"
+        value={form.equipment_cost}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            equipment_cost:e.target.value,
+          })
+        }
+        />
+
+        <div className="sm:col-span-2 mt-2">
+          <h3 className="text-sm font-semibold text-app">
+            Garantía
+          </h3>
+        </div>
+
+        <Input
+        label="Inicio de garantía"
+        type="date"
+        value={form.warranty_start_date}
+        onChange={(e) => 
+          setForm({
+            ...form,
+            warranty_start_date: e.target.value,
+          })
+        }
+        />
+        <Input
+        label="Finalización de garantía"
+        type="date"
+        value={form.warranty_end_date}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            warranty_end_date: e.target.value,
+          })
+        }
+        />
+
+        <div className="sm:col-span-2 mt-2">
+          <h3 className="text-sm font-semibold text-app">
+            Mantenimiento
+          </h3>
+          <p className="text-xs text-app-muted">
+            Configuración y seguimiento del mantenimiento
+          </p>
+        </div>
+        <Input
+        label="Proveedor de mantenimiento"
+        value={form.maintenance_provider}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            maintenance_provider:e.target.value
+          })
+        }
+        />
+        <Input
+        label="Frecuencia de mantenimiento (meses)"
+        type="number"
+        min="0"
+        value={form.maintenance_frequency_months}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            maintenance_frequency_months:e.target.value
+          })
+        }
+        />
+        <Input
+        label="Último preventivo"
+        value={form.last_preventive}
+        onChange={(e) =>
+            setForm({
+              ...form,
+              last_preventive:e.target.value
+            })
+        }
+        />
+        <Input
+        label="Próximo preventivo"
+        value={form.next_preventive}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            next_preventive:e.target.value,
+          })
+        }
+        />
+        <div className="sm:col-span-2.mt-2">
+          <h3 className="text-sm font-semibold text-app">
+            Calibración
+          </h3>
+        </div>
+        <Input
+        label="Frecuencia de calibración (meses)"
+        type="number"
+        min="0"
+        value={form.calibration_frequency_months}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            calibration_frequency_months:e.target.value
+          })
+        }
+        />
+        <Input
+        label="Última calibración"
+        value={form.last_calibration}
+        onChange={(e) => 
+          setForm({
+            ...form,
+            last_calibration:e.target.value,
+          })
+        }
+        />
+        <Input
+        label="Próxima Calibración"
+        value={form.next_calibration}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            next_calibration: e.target.value
+          })
+        }
+        />
+        <div className="sm:col-span-2 mt-2">
+          <h3 className="text-sm font-semibold text-app">
+            Seguridad eléctrica
+          </h3>
+        </div>
+        <Input
+        label="Clase de seguridad eléctrica"
+        value={form.electrical_safety_class}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            electrical_safety_class:e.target.value,
+          })
+        }
+        />
+        <Input
+        label="Tipo de seguridad eléctrica"
+        value={form.electrical_safety_type}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            electrical_safety_type:e.target.value,
+          })
+        }
+        />
+        <div className="sm:col-span-2.mt-2">
+          <h3 className="text-sm font-semiboold text-app">
+            Información regulatoria
+          </h3>
+        </div>
+        <Input
+        label="Registro INVIMA"
+        value={form.invima_registration}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            invima_registration:e.target.value,
+          })
+        }
+        />
+        <Input
+        label="ECRI"
+        value={form.ecri}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            ecri:e.target.value,
+          })
+        }
+        />
+        <div className="sm:col-span-2 mt-2">
+          <h3 className="text-sm font-semibold text-app">
+            Vida útil
+          </h3>
+        </div>
+
+        <Input
+        label="Vida útil (años)"
+        type="number"
+        min="0"
+        value={form.life_use_years}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            life_use_years:e.target.value,
+          })
+        }
+        />
+        <Select
             label="Estado"
             value={form.status}
             onChange={(e) =>
@@ -647,23 +1263,25 @@ export function EquiposPage() {
               label,
             }))}
           />
-          <Input
-            label="Ubicación"
-            value={form.location}
-            onChange={(e) => setForm({ ...form, location: e.target.value })}
-            required
-            className="sm:col-span-2"
-          />
-          <Input
-            label="Fecha de compra"
-            type="date"
-            value={form.purchase_date}
-            onChange={(e) =>
-              setForm({ ...form, purchase_date: e.target.value })
+
+          <div className="sm:col-span-2.mt-2">
+            <h3 className="text-sm font-semibold text-app">
+              Observaciones
+            </h3>
+          </div>
+         
+          <div className="sm:col-span-2">
+            <textarea value={form.observations} onChange={(e) =>
+              setForm({
+                ...form,
+                observations:e.target.value
+              })
             }
-            required
-            className="sm:col-span-2"
-          />
+            rows={4}
+            placeholder="Observaciones adicionales del equipo..."
+            className="w-full rounded-lg border-app bg-app px-3 py-3 text-sm text-app outline-none transition placeholder:text-app-muted focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]/20 "
+            />
+          </div>
           <div className="flex justify-end gap-2 sm:col-span-2">
             <Button variant="secondary" onClick={closeModal} type="button">
               Cancelar

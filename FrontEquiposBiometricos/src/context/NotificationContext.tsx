@@ -16,7 +16,6 @@ import {
 } from "react";
 import { ToastContainer } from "@/components/ui/ToastContainer";
 import type { ToastData } from "@/components/ui/Toast";
-import { tokenStorage } from "@/lib/api";
 import { notificationsSocket } from "@/lib/websocket";
 import type { NotificationEvent } from "@/types/notifications";
 import { useAuth } from "./AuthContext";
@@ -87,9 +86,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       notificationsSocket.disconnect();
       return;
     }
-    const token = tokenStorage.getAccess();
-    if (!token) return;
-    notificationsSocket.connect(token);
+    notificationsSocket.connect();
     const unsubscribe = notificationsSocket.on((event) => {
       notify(toastFromEvent(event));
     });

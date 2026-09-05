@@ -16,6 +16,7 @@ dist/
 venv/
 env/
 ENV/
+biometricapi_env/
 
 # Django
 *.log
@@ -68,3 +69,5 @@ docker-compose.override.yml
 .agents/
 .claude/
 skills-lock.json
+
+*.md

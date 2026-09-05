@@ -21,3 +21,16 @@ except ImportError:
 
 # En dev permitimos cualquier origen para no bloquear pruebas con frontend local
 CORS_ALLOW_ALL_ORIGINS = True
+
+# CSP relajada en dev: debug_toolbar y el navegador de la API de DRF inyectan
+# estilos/scripts inline que la CSP estricta de base.py bloquearía.
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {
+        "default-src": ["'self'"],
+        "img-src": ["'self'", "data:"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "script-src": ["'self'", "'unsafe-inline'"],
+        "frame-ancestors": ["'none'"],
+        "object-src": ["'none'"],
+    }
+}

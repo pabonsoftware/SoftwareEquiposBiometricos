@@ -1,75 +1,101 @@
-import axios, { AxiosError, type AxiosRequestConfig } from "axios";
+import axios, {
+  AxiosError,
+  type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
+} from "axios";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
-export const ACCESS_TOKEN_KEY = "biometric_access_token";
-export const REFRESH_TOKEN_KEY = "biometric_refresh_token";
 export const USER_KEY = "biometric_user";
 
-export const tokenStorage = {
-  getAccess(): string | null {
-    return localStorage.getItem(ACCESS_TOKEN_KEY);
+// El access/refresh token ya NO se guarda en localStorage: el backend los
+// entrega como cookies httpOnly (ver api/v1/common/views.py), así que un
+// XSS no puede leerlos ni robarlos. El navegador las adjunta solo con
+// `withCredentials: true`. Lo único que seguimos cacheando localmente es el
+// perfil del usuario (no sensible) para pintar la UI al instante.
+export const userCache = {
+  get(): unknown | null {
+    const raw = localStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
   },
-  getRefresh(): string | null {
-    return localStorage.getItem(REFRESH_TOKEN_KEY);
-  },
-  setTokens(access: string, refresh?: string) {
-    localStorage.setItem(ACCESS_TOKEN_KEY, access);
-    if (refresh) localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+  set(user: unknown) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
   },
   clear() {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
   },
 };
+
+function readCookie(name: string): string | null {
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`),
+  );
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 // Timeout global (ms). Si el backend no responde, las peticiones se cortan
 // para que la UI no se quede colgada con un spinner eterno.
 const REQUEST_TIMEOUT_MS = 15000;
 
+const UNSAFE_METHODS = new Set(["post", "put", "patch", "delete"]);
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: REQUEST_TIMEOUT_MS,
   headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 });
 
-// Cliente "raw" para refresh — sin interceptores para no entrar en bucles.
+// Cliente "raw" para refresh — sin el interceptor de response (que dispara
+// el propio refresh en un 401) para no entrar en bucles. Sí lleva el
+// interceptor de CSRF, porque el refresh es un POST autenticado por cookie.
 const rawClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: REQUEST_TIMEOUT_MS,
   headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  const token = tokenStorage.getAccess();
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
+// Django exige el header X-CSRFToken (double-submit cookie) en requests que
+// mutan estado cuando la autenticación viaja por cookie. El valor de la
+// cookie `csrftoken` es legible por JS a propósito (no es httpOnly).
+function attachCsrfHeader(config: InternalAxiosRequestConfig) {
+  const method = config.method?.toLowerCase();
+  if (method && UNSAFE_METHODS.has(method)) {
+    const csrfToken = readCookie("csrftoken");
+    if (csrfToken) {
+      config.headers.set("X-CSRFToken", csrfToken);
+    }
   }
   return config;
-});
+}
+
+api.interceptors.request.use(attachCsrfHeader);
+rawClient.interceptors.request.use(attachCsrfHeader);
 
 let isRefreshing = false;
-let pending: Array<(token: string | null) => void> = [];
+let pending: Array<(ok: boolean) => void> = [];
 
-function notifyAll(token: string | null) {
-  pending.forEach((cb) => cb(token));
+function notifyAll(ok: boolean) {
+  pending.forEach((cb) => cb(ok));
   pending = [];
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  const refresh = tokenStorage.getRefresh();
-  if (!refresh) return null;
+async function refreshAccessToken(): Promise<boolean> {
   try {
-    const { data } = await rawClient.post<{ access: string }>(
-      "/auth/token/refresh/",
-      { refresh },
-    );
-    tokenStorage.setTokens(data.access);
-    return data.access;
+    // /auth/token/cookie/refresh/ (no /auth/token/refresh/): esa otra ruta
+    // es la variante "clásica" para la app móvil, que espera el refresh
+    // token en el body — acá viaja en la cookie httpOnly.
+    await rawClient.post("/auth/token/cookie/refresh/");
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -80,8 +106,7 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const url = original?.url ?? "";
 
-    const isAuthEndpoint =
-      url.includes("/auth/token/") || url.includes("/auth/token/refresh/");
+    const isAuthEndpoint = url.includes("/auth/token/");
 
     if (status !== 401 || original?._retry || isAuthEndpoint) {
       return Promise.reject(error);
@@ -89,16 +114,12 @@ api.interceptors.response.use(
 
     if (isRefreshing) {
       return new Promise((resolve, reject) => {
-        pending.push((token) => {
-          if (!token) {
+        pending.push((ok) => {
+          if (!ok) {
             reject(error);
             return;
           }
           original._retry = true;
-          original.headers = {
-            ...(original.headers ?? {}),
-            Authorization: `Bearer ${token}`,
-          };
           resolve(api(original));
         });
       });
@@ -106,22 +127,18 @@ api.interceptors.response.use(
 
     original._retry = true;
     isRefreshing = true;
-    const newToken = await refreshAccessToken();
+    const refreshed = await refreshAccessToken();
     isRefreshing = false;
-    notifyAll(newToken);
+    notifyAll(refreshed);
 
-    if (!newToken) {
-      tokenStorage.clear();
+    if (!refreshed) {
+      userCache.clear();
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
         window.location.assign("/login");
       }
       return Promise.reject(error);
     }
 
-    original.headers = {
-      ...(original.headers ?? {}),
-      Authorization: `Bearer ${newToken}`,
-    };
     return api(original);
   },
 );

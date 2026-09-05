@@ -7,15 +7,17 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-#Environemt variables
-.env
-
-
-
 node_modules
 dist
 dist-ssr
 *.local
+
+# Env: solo se versiona .env.example. Vite empaqueta cualquier VITE_* al
+# bundle público, así que estos archivos son el lugar donde alguien podría
+# terminar poniendo algo sensible sin querer.
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*

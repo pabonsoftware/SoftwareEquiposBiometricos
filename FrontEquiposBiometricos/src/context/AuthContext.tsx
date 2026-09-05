@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { tokenStorage, USER_KEY } from "@/lib/api";
+import { userCache } from "@/lib/api";
 import { authService } from "@/services/auth.service";
 import type { LoginRequest, Usuario } from "@/types/auth";
 
@@ -15,44 +15,29 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function loadCachedUser(): Usuario | null {
-  const raw = localStorage.getItem(USER_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Usuario;
-  } catch {
-    return null;
-  }
+  return (userCache.get() as Usuario | null) ?? null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const cachedUser = loadCachedUser();
   const [usuario, setUsuario] = useState<Usuario | null>(cachedUser);
-  // Sólo bloqueamos la app si NO hay caché de usuario pero sí hay token.
-  // Si el caché existe, renderizamos al instante y refrescamos en segundo
-  // plano sin bloquear la UI.
-  const [loading, setLoading] = useState<boolean>(
-    !!tokenStorage.getAccess() && !cachedUser,
-  );
+  // Sólo bloqueamos la app si NO hay caché de usuario: como el token ahora
+  // vive en una cookie httpOnly que JS no puede leer, no hay forma de saber
+  // de antemano si hay sesión sin preguntarle al backend.
+  const [loading, setLoading] = useState<boolean>(!cachedUser);
 
   useEffect(() => {
     let cancelled = false;
-    const token = tokenStorage.getAccess();
 
-    // Sin token → nada que hidratar.
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-
-    // Hidratación: refrescar desde /users/me/. Si la petición falla o se
-    // pasa del timeout, el .catch limpia tokens y caché y la app queda en
-    // estado público (sin spinner permanente).
+    // Hidratación: intentamos /users/me/. La cookie de sesión (si existe)
+    // viaja sola gracias a withCredentials. Si no hay sesión, el backend
+    // responde 401 y el catch limpia la caché.
     authService
       .me()
       .then((u) => {
         if (cancelled) return;
         setUsuario(u);
-        localStorage.setItem(USER_KEY, JSON.stringify(u));
+        userCache.set(u);
       })
       .catch(() => {
         if (cancelled) return;
@@ -60,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // la sesión optimistamente (el siguiente request 401 disparará el
         // refresh + redirect).
         if (!cachedUser) {
-          tokenStorage.clear();
+          userCache.clear();
           setUsuario(null);
         }
       })
@@ -75,23 +60,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (data: LoginRequest) => {
-    const tokens = await authService.login(data);
-    tokenStorage.setTokens(tokens.access, tokens.refresh);
+    await authService.login(data);
     const u = await authService.me();
     setUsuario(u);
-    localStorage.setItem(USER_KEY, JSON.stringify(u));
+    userCache.set(u);
     return u;
   };
 
   const logout = () => {
-    tokenStorage.clear();
+    // Fire-and-forget: no bloqueamos la UI a que el backend confirme el
+    // blacklist del refresh token para limpiar el estado local.
+    void authService.logout();
+    userCache.clear();
     setUsuario(null);
   };
 
   const refreshUser = async () => {
     const u = await authService.me();
     setUsuario(u);
-    localStorage.setItem(USER_KEY, JSON.stringify(u));
+    userCache.set(u);
   };
 
   return (

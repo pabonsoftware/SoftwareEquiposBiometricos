@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.6
-
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -30,7 +28,15 @@ COPY . /app/
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# No correr la app como root dentro del contenedor.
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# gunicorn por defecto (imagen lista para producción). docker-compose.yml
+# de desarrollo sobreescribe este CMD con `runserver` para hot-reload; ver
+# docker-compose.prod.yml para el override de producción explícito.
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]

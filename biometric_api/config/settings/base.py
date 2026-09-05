@@ -52,20 +52,29 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "django_filters",
     "corsheaders",
     "drf_spectacular",
+    "drf_spectacular_sidecar",
     "storages",
+    "axes",
 ]
 
 LOCAL_APPS: list[str] = [
+    "apps.users",
+    "apps.branches",
+    "apps.catalog",
+    "apps.equipment",
+    "apps.maintenance",
+    "apps.scheduling",
+    "apps.failures",
+    "apps.audit",
     # Las apps de dominio se irán agregando incrementalmente:
     # "apps.core",
-    # "apps.sites",
-    # "apps.equipment",
-    # "apps.maintenance",
-    # "apps.failures",
 ]
+
+AUTH_USER_MODEL = "users.User"
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -81,6 +90,13 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "csp.middleware.CSPMiddleware",
+    "axes.middleware.AxesMiddleware",
+]
+
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesBackend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -152,7 +168,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "api.v1.common.authentication.CookieJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -165,6 +181,15 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": env("THROTTLE_RATE_ANON", default="20/min"),
+        "user": env("THROTTLE_RATE_USER", default="120/min"),
+        "login": env("THROTTLE_RATE_LOGIN", default="5/min"),
+    },
 }
 
 SIMPLE_JWT = {
@@ -175,7 +200,33 @@ SIMPLE_JWT = {
         days=env.int("JWT_REFRESH_TOKEN_LIFETIME_DAYS", default=7)
     ),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
+
+# ---------------------------------------------------------------------------
+# Cookies de autenticación (frontend web)
+# ---------------------------------------------------------------------------
+# El frontend web recibe el access/refresh token como cookies httpOnly (no
+# localStorage) para que un XSS no pueda robarlos ni suplantar al usuario.
+# Los clientes que usan el header Authorization (app móvil, Postman, etc.)
+# no se ven afectados: CookieJWTAuthentication sigue aceptando ese header y
+# solo cae a la cookie cuando no viene header.
+AUTH_COOKIE_ACCESS_NAME = "access_token"
+AUTH_COOKIE_REFRESH_NAME = "refresh_token"
+AUTH_COOKIE_SAMESITE = env("AUTH_COOKIE_SAMESITE", default="Lax")
+# En prod.py se fuerza a True (HTTPS). En dev queda en False por defecto para
+# no requerir HTTPS local; puede activarse por env si se prueba con HTTPS.
+AUTH_COOKIE_SECURE = env.bool("AUTH_COOKIE_SECURE", default=False)
+
+# La cookie `csrftoken` (usada por enforce_csrf en api/v1/common/authentication.py)
+# tiene que poder viajar en el mismo tipo de request que access_token/
+# refresh_token — si un despliegue cambia AUTH_COOKIE_SAMESITE a "None" para
+# un escenario realmente cross-site pero esta cookie se queda en "Lax", el
+# navegador manda las cookies de auth pero no la de CSRF, y todo mutating
+# request autenticado por cookie empieza a fallar con "CSRF cookie not set".
+CSRF_COOKIE_SAMESITE = AUTH_COOKIE_SAMESITE
+SESSION_COOKIE_SAMESITE = AUTH_COOKIE_SAMESITE
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Biometric API",
@@ -183,12 +234,53 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    # Sirve los assets de Swagger/Redoc localmente (sin CDN externo) para
+    # poder mantener una CSP estricta (default-src 'self').
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "REDOC_DIST": "SIDECAR",
+}
+
+# ---------------------------------------------------------------------------
+# django-axes (bloqueo tras intentos fallidos de login)
+# ---------------------------------------------------------------------------
+AXES_FAILURE_LIMIT = env.int("AXES_FAILURE_LIMIT", default=5)
+AXES_COOLOFF_TIME = env.int("AXES_COOLOFF_TIME_HOURS", default=1)
+# Lockout por la COMBINACIÓN (username + ip_address), no por username solo:
+# con ["username"] cualquier atacante no autenticado que conozca un username
+# válido puede bloquear esa cuenta 1h enviando 5 intentos fallidos desde
+# cualquier IP (DoS dirigido). Con [["username", "ip_address"]] el bloqueo
+# solo aplica a ese par específico, así que un atacante no puede tumbar la
+# cuenta de otra persona sin operar desde su misma IP.
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_RESET_ON_SUCCESS = True
+
+# ---------------------------------------------------------------------------
+# Content-Security-Policy (django-csp)
+# ---------------------------------------------------------------------------
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {
+        "default-src": ["'self'"],
+        "img-src": ["'self'", "data:"],
+        "style-src": ["'self'"],
+        "script-src": ["'self'"],
+        "frame-ancestors": ["'none'"],
+        "object-src": ["'none'"],
+    }
 }
 
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+# OJO: NO poner CORS_ALLOW_CREDENTIALS = True. El frontend web ya no
+# necesita requests cross-origin con cookies — en dev pasa por el proxy de
+# Vite (mismo origen, ver vite.config.ts) y en prod nginx sirve todo bajo un
+# único origen. Combinar ALLOW_CREDENTIALS con el CORS_ALLOW_ALL_ORIGINS de
+# dev.py dejaría a cualquier sitio de terceros leer respuestas autenticadas
+# (con la cookie de sesión) de un desarrollador que tenga el backend
+# corriendo y visite esa página — sin ganar nada a cambio, porque nada del
+# flujo real depende de eso.
 
 # ---------------------------------------------------------------------------
 # AWS S3 (django-storages)
@@ -251,3 +343,66 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+
+# ---------------------------------------------------------------------------
+# Notificaciones de mantenimiento
+# ---------------------------------------------------------------------------
+MAINTENANCE_NOTIFICATION_EMAILS = env.list(
+    "MAINTENANCE_NOTIFICATION_EMAILS", default=[]
+)
+
+# ---------------------------------------------------------------------------
+# Logging (a stdout, apto para contenedores/Docker)
+# ---------------------------------------------------------------------------
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {
+            "format": "[{asctime}] {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": env("DJANGO_LOG_LEVEL", default="INFO"),
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "django.security": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Sentry (captura de errores/monitoreo) — solo se activa si hay DSN
+# ---------------------------------------------------------------------------
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=env("SENTRY_ENVIRONMENT", default="production"),
+        integrations=[
+            DjangoIntegration(),
+            LoggingIntegration(level=None, event_level="ERROR"),
+        ],
+        traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.1),
+        send_default_pii=False,
+    )

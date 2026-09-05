@@ -14,3 +14,6 @@ moto[s3]==5.0.7
 django-debug-toolbar==4.3.0
 ruff==0.4.4
 ipython==8.24.0
+
+# --- Celery monitoring (UI) ---
+flower==2.0.1
