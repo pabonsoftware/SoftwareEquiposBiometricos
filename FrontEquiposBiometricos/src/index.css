@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #d71920;
+  --color-primary-dark: #b2141a;
+  --color-primary-darker: #7a0d12;
+  --color-secondary: #111827;
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  --bg: #ffffff;
+  --bg-muted: #f9fafb;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --text: #111827;
+  --text-muted: #6b7280;
+}
+
+.dark {
+  --bg: #0b0f17;
+  --bg-muted: #111827;
+  --surface: #131a26;
+  --border: #1f2937;
+  --text: #f3f4f6;
+  --text-muted: #9ca3af;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer utilities {
+  .bg-app {
+    background-color: var(--bg);
+  }
+  .bg-app-muted {
+    background-color: var(--bg-muted);
+  }
+  .bg-surface {
+    background-color: var(--surface);
+  }
+  .text-app {
+    color: var(--text);
+  }
+  .text-app-muted {
+    color: var(--text-muted);
+  }
+  .border-app {
+    border-color: var(--border);
+  }
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.toast-enter {
+  animation: toast-enter 180ms ease-out;
+}
