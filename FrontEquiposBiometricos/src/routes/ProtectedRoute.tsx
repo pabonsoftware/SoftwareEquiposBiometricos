@@ -1,12 +1,19 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { can, type Resource } from "@/lib/permissions";
 import type { Rol } from "@/types/auth";
 
 interface ProtectedRouteProps {
   roles?: Rol[];
+  /**
+   * Si se define, exige permiso de lectura sobre ese recurso (misma regla que
+   * usa el menú lateral). Entrar por URL directa a un módulo que el rol no ve
+   * redirige al panel en vez de mostrar un error de API.
+   */
+  resource?: Resource;
 }
 
-export function ProtectedRoute({ roles }: ProtectedRouteProps) {
+export function ProtectedRoute({ roles, resource }: ProtectedRouteProps) {
   const { usuario, isAuthenticated, loading } = useAuth();
   const location = useLocation();
 
@@ -30,6 +37,9 @@ export function ProtectedRoute({ roles }: ProtectedRouteProps) {
     );
   }
   if (roles && usuario && !roles.includes(usuario.role)) {
+    return <Navigate to="/admin" replace />;
+  }
+  if (resource && usuario && !can(usuario.role, resource, "view")) {
     return <Navigate to="/admin" replace />;
   }
 

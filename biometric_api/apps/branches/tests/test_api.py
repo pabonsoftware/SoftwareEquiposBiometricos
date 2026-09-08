@@ -124,6 +124,7 @@ class TestBranchCreate:
         assert response.status_code == status.HTTP_201_CREATED
         assert Branch.objects.count() == 1
         created = Branch.objects.first()
+        assert created is not None
         assert created.name == "Sede Norte"
         assert created.city == "Bogota"
 
@@ -232,9 +233,15 @@ class TestBranchDelete:
         response = admin_client.delete(detail_url(9999))
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_delete_by_non_management_role_returns_403(self, auth_client, branch):
-        """`auth_client` es un usuario técnico (rol por defecto): no puede borrar."""
-        response = auth_client.delete(detail_url(branch.id))
+    def test_delete_by_non_management_role_returns_403(self, tecnico_client, branch):
+        """Un usuario técnico (rol operativo) no puede borrar una sede."""
+        response = tecnico_client.delete(detail_url(branch.id))
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert Branch.objects.filter(id=branch.id).exists()
+
+    def test_create_by_non_admin_returns_403(self, tecnico_client):
+        """Solo el Administrador del Sistema administra las sedes."""
+        response = tecnico_client.post(LIST_URL, data={"name": "X"}, format="json")
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN

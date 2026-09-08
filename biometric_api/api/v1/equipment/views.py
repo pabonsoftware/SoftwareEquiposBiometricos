@@ -1,11 +1,17 @@
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from api.v1.common.mixins import AuditLogMixin
-from api.v1.common.permissions import RestrictDeleteToManagement
+from api.v1.common.pagination import QrCodePagination, StandardResultsSetPagination
+from api.v1.common.permissions import (
+    AdminPermissions,
+    CoordBiomedicalPermission,
+    EngineerBiomedicalPermissions,
+)
 from apps.equipment.models import (
     Equipment,
     EquipmentAttachment,
@@ -17,6 +23,7 @@ from apps.equipment.models import (
     WorkOrderMeasurement,
     WorkOrderSignature,
     WorkOrderSparePart,
+    WorkOrderStatus,
 )
 from apps.equipment.services import generate_qr_for_equipment
 
@@ -25,7 +32,9 @@ from .serializers import (
     EquipmentAttachmentSerializer,
     EquipmentCertificateSerializer,
     EquipmentInstructionSerializer,
+    EquipmentQrSerializer,
     EquipmentSerializer,
+    EquipmentWorkOrderDetailSerializer,
     EquipmentWorkOrderSerializer,
     WorkOrderCostSerializer,
     WorkOrderEvidenceSerializer,
@@ -54,7 +63,12 @@ class EquipmentViewSet(AuditLogMixin, viewsets.ModelViewSet):
         "branch", "equipment_model", "equipment_model__brand"
     )
     serializer_class = EquipmentSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Alta administrativa: Admin. Información técnica (hojas de vida, fichas
+    # OEM) y códigos QR: Ingeniero.
+    permission_classes = (
+        IsAuthenticated,
+        AdminPermissions | EngineerBiomedicalPermissions,
+    )
     filterset_class = EquipmentFilter
     search_fields = (
         "name",
@@ -78,7 +92,7 @@ class EquipmentViewSet(AuditLogMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"], url_path="regenerate-qr")
-    def regenerate_qr(self, request, pk: int = None):
+    def regenerate_qr(self, request, pk: str | None = None):
         """Regenera el código QR del equipo."""
         equipment = self.get_object()
         if equipment.qr_code:
@@ -88,8 +102,27 @@ class EquipmentViewSet(AuditLogMixin, viewsets.ModelViewSet):
         serializer = self.get_serializer(equipment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="qr-codes",
+        pagination_class=QrCodePagination,
+        serializer_class=EquipmentQrSerializer,
+    )
+    def qr_codes(self, request):
+        """Galería paginada de códigos QR.
+
+        El tamaño de página lo fija el backend (`QrCodePagination`: máx. 20 y no
+        configurable por el cliente). Respeta los filtros y la búsqueda del
+        viewset (`?search=`, `?branch=`).
+        """
+        queryset = self.filter_queryset(self.get_queryset()).order_by("asset_tag")
+        page = self.paginate_queryset(queryset)
+        serializer = self.get_serializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
     @action(detail=True, methods=["get"], url_path="history")
-    def history(self, request, pk: int = None):
+    def history(self, request, pk: str | None = None):
         """Historial paginado de mantenimientos del equipo."""
         # Imports locales para evitar cualquier riesgo de import circular:
         # apps.maintenance ya importa apps.equipment.models en su FK.
@@ -117,7 +150,11 @@ class EquipmentAttachmentViewSet(viewsets.ModelViewSet):
     )
 
     serializer_class = EquipmentAttachmentSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Hojas de vida / fichas OEM: las escribe el Ingeniero.
+    permission_classes = (
+        IsAuthenticated,
+        EngineerBiomedicalPermissions,
+    )
 
     search_fields = ("title","equipment__name","equipment__asset_tag")
 
@@ -140,7 +177,11 @@ class EquipmentCertificateViewSet(viewsets.ModelViewSet):
 
     serializer_class = EquipmentCertificateSerializer
 
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Certificados: los escribe el Ingeniero.
+    permission_classes = (
+        IsAuthenticated,
+        EngineerBiomedicalPermissions,
+    )
 
     search_fields = (
         "certificate_number",
@@ -158,7 +199,7 @@ class EquipmentCertificateViewSet(viewsets.ModelViewSet):
 
 class EquipmentInstructionViewSet(viewsets.ModelViewSet):
 
-    "CRUD de instrucciones de equipos" 
+    "CRUD de instrucciones de equipos"
 
     queryset = EquipmentInstruction.objects.select_related(
         "equipment",
@@ -166,7 +207,11 @@ class EquipmentInstructionViewSet(viewsets.ModelViewSet):
 
     serializer_class = EquipmentInstructionSerializer
 
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Fichas técnicas / instrucciones: las escribe el Ingeniero.
+    permission_classes = (
+        IsAuthenticated,
+        EngineerBiomedicalPermissions,
+    )
 
     search_fields = (
         "activity",
@@ -181,7 +226,7 @@ class EquipmentInstructionViewSet(viewsets.ModelViewSet):
 
     ordering = ("instruction_type","sequence",)
 
-    
+
 class EquipmentWorkOrderViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
     "CRUD de órdenes de trabajo de equipos"
@@ -189,10 +234,23 @@ class EquipmentWorkOrderViewSet(AuditLogMixin, viewsets.ModelViewSet):
     queryset = EquipmentWorkOrder.objects.select_related(
         "equipment",
         "technician",
+        "maintenance_record",
+        "maintenance_record__scheduled_maintenance",
     )
 
     serializer_class = EquipmentWorkOrderSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    pagination_class = StandardResultsSetPagination
+    # Órdenes de trabajo: Ingeniero (emite), Coordinador (aprueba/cierra),
+    # Ingeniero (ejecuta/documenta) y Coordinador (autoriza/cierra).
+    permission_classes = (
+        IsAuthenticated,
+        (
+            EngineerBiomedicalPermissions
+            | CoordBiomedicalPermission
+        )
+    )
+
+    filterset_fields = ("status", "service_type", "equipment", "technician")
 
     search_fields = (
         "number",
@@ -206,15 +264,57 @@ class EquipmentWorkOrderViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
     ordering_fields = ("number","start_date","end_date","status",)
 
-    @action(detail=True,methods=["get"],url_path="details",)
-    def details(self,request,pk:int=None):
+    def get_serializer_class(self):
+        if self.action == "details":
+            return EquipmentWorkOrderDetailSerializer
+        return super().get_serializer_class()
 
-        """ Devuelve una orden de trabajo junto a sus elementos relacionados"""
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action == "details":
+            queryset = queryset.prefetch_related(
+                "spare_parts",
+                "workordermeasurement_set",
+                "evidences",
+                "signatures",
+                "cost",
+            )
+        return queryset
 
+    @action(detail=True, methods=["get"], url_path="details")
+    def details(self, request, pk: str | None = None):
+        """Devuelve una orden de trabajo junto a sus elementos relacionados."""
+        work_order = self.get_object()
+        serializer = self.get_serializer(work_order)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="complete")
+    def complete(self, request, pk: str | None = None):
+        """Cierra la orden: la marca como Terminada y (vía signal) deja el
+        mantenimiento en la hoja de vida del equipo. Acepta un texto opcional
+        `observations` que se anexa a la descripción.
+        """
         work_order = self.get_object()
 
-        serializer = self.get_serializer(work_order)
+        if work_order.status == WorkOrderStatus.FINISHED:
+            return Response(
+                {"detail": "La orden de trabajo ya está terminada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        observations = str(request.data.get("observations") or "").strip()
+        if observations:
+            fecha = timezone.localdate().isoformat()
+            work_order.description = (
+                f"{work_order.description}\n\nCierre ({fecha}): {observations}"
+            )
+
+        work_order.status = WorkOrderStatus.FINISHED
+        if work_order.end_date is None:
+            work_order.end_date = timezone.now()
+        work_order.save()
+
+        serializer = self.get_serializer(work_order)
         return Response(serializer.data)
 
 class WorkOrderSparePartViewSet(viewsets.ModelViewSet):
@@ -225,16 +325,17 @@ class WorkOrderSparePartViewSet(viewsets.ModelViewSet):
                 "work_order",
                 "work_order__equipment",
             )
-    
+
     serializer_class = WorkOrderSparePartSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
-    
+    # Repuestos utilizados: los documenta el Ingeniero.
+    permission_classes = (IsAuthenticated, EngineerBiomedicalPermissions)
+
     search_fields = ("name","reference","work_order__number")
-    
+
     ordering_fields = ("name","quantity","unit_cost","total_cost")
 
     ordering = ("name",)
-    
+
 
 class WorkOrderMeasurementViewSet(viewsets.ModelViewSet):
 
@@ -246,7 +347,8 @@ class WorkOrderMeasurementViewSet(viewsets.ModelViewSet):
     )
 
     serializer_class = WorkOrderMeasurementSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Mediciones tomadas: las documenta el Ingeniero.
+    permission_classes = (IsAuthenticated, EngineerBiomedicalPermissions)
 
     search_fields = (
         "parameter",
@@ -274,7 +376,8 @@ class WorkOrderEvidenceViewSet(viewsets.ModelViewSet):
     )
 
     serializer_class = WorkOrderEvidenceSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Evidencia fotográfica de la intervención: la sube el Ingeniero.
+    permission_classes = (IsAuthenticated, EngineerBiomedicalPermissions)
 
     search_fields = (
         "description",
@@ -296,7 +399,11 @@ class WorkOrderSignatureViewSet(viewsets.ModelViewSet):
     )
 
     serializer_class = WorkOrderSignatureSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Firmas de la orden: Ingeniero (ejecución) y Coordinador (cierre formal).
+    permission_classes = (
+        IsAuthenticated,
+        EngineerBiomedicalPermissions | CoordBiomedicalPermission,
+    )
 
     search_fields = ("signed_by","role","work_order__number")
     ordering_fields = (
@@ -321,7 +428,11 @@ class WorkOrderCostViewSet(viewsets.ModelViewSet):
     )
 
     serializer_class = WorkOrderCostSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Costos de la orden: Ingeniero (repuestos/insumos) y Coordinador (cierre).
+    permission_classes = (
+        IsAuthenticated,
+        EngineerBiomedicalPermissions | CoordBiomedicalPermission,
+    )
 
     search_fields = (
         "work_order__number",

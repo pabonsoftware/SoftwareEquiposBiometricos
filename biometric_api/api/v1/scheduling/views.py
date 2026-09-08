@@ -3,7 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from api.v1.common.permissions import RestrictDeleteToManagement
+from api.v1.common.permissions import (
+    CoordBiomedicalPermission,
+    EngineerBiomedicalPermissions,
+)
 from apps.scheduling.models import MaintenanceSchedule
 from apps.scheduling.tasks import send_schedule_notification
 
@@ -16,7 +19,12 @@ class MaintenanceScheduleViewSet(viewsets.ModelViewSet):
 
     queryset = MaintenanceSchedule.objects.all()
     serializer_class = MaintenanceScheduleSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # El Ingeniero elabora el plan anual de mantenimiento preventivo; el
+    # Coordinador aprueba los cronogramas y las solicitudes.
+    permission_classes = (
+        IsAuthenticated,
+        EngineerBiomedicalPermissions | CoordBiomedicalPermission,
+    )
     filterset_class = MaintenanceScheduleFilter
     search_fields = (
         "notes",

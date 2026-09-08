@@ -274,11 +274,11 @@ export function EquipoFichaContent({
           </TabButton>
           <TabButton active={tab === "historial"} onClick={() => setTab("historial")}>
             <Wrench size={14} className="mr-1.5 inline" />
-            Mantenimientos realizados
+            Órdenes de trabajo
           </TabButton>
           <TabButton active={tab === "programados"} onClick={() => setTab("programados")}>
             <CalendarClock size={14} className="mr-1.5 inline" />
-            Programados
+            Solicitudes
           </TabButton>
         </div>
 
@@ -287,12 +287,12 @@ export function EquipoFichaContent({
           <div className="flex flex-col gap-4 text-sm">
             <p className="text-app-muted">
               Este equipo tiene actualmente{" "}
-              <strong className="text-app">{history.length}</strong> mantenimientos
-              registrados y{" "}
+              <strong className="text-app">{history.length}</strong> órdenes de
+              trabajo registradas y{" "}
               <strong className="text-app">
                 {scheduled.filter((s) => !s.is_completed).length}
               </strong>{" "}
-              agendamientos pendientes.
+              solicitudes pendientes.
             </p>
 
             <div>
@@ -349,7 +349,7 @@ export function EquipoFichaContent({
               <p className="py-6 text-center text-sm text-app-muted">Cargando...</p>
             ) : history.length === 0 ? (
               <p className="py-6 text-center text-sm text-app-muted">
-                Este equipo aún no tiene mantenimientos registrados.
+                Este equipo aún no tiene órdenes de trabajo registradas.
               </p>
             ) : (
               history.map((m) => (
@@ -416,7 +416,7 @@ export function EquipoFichaContent({
               <p className="py-6 text-center text-sm text-app-muted">Cargando...</p>
             ) : scheduled.length === 0 ? (
               <p className="py-6 text-center text-sm text-app-muted">
-                No hay mantenimientos programados con los filtros actuales.
+                No hay solicitudes con los filtros actuales.
               </p>
             ) : (
               scheduled.map((s) => (

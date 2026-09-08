@@ -257,14 +257,18 @@ class TestMaintenanceUpdate:
 
 
 class TestMaintenanceDelete:
-    def test_delete_record(self, auth_client, maintenance_record):
-        response = auth_client.delete(detail_url(maintenance_record.id))
+    def test_delete_record(self, management_client, maintenance_record):
+        response = management_client.delete(detail_url(maintenance_record.id))
 
         assert response.status_code == 204
         assert not MaintenanceRecord.objects.filter(id=maintenance_record.id).exists()
 
-    def test_delete_missing_returns_404(self, auth_client):
-        assert auth_client.delete(detail_url(99999)).status_code == 404
+    def test_delete_missing_returns_404(self, management_client):
+        assert management_client.delete(detail_url(99999)).status_code == 404
+
+    def test_delete_by_tecnico_returns_403(self, auth_client, maintenance_record):
+        """`auth_client` es un técnico: documenta pero no elimina registros."""
+        assert auth_client.delete(detail_url(maintenance_record.id)).status_code == 403
 
 
 class TestEquipmentHistoryAction:

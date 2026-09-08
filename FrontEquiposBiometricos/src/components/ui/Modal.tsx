@@ -7,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl";
 }
 
 const sizes: Record<NonNullable<ModalProps["size"]>, string> = {
@@ -15,6 +15,8 @@ const sizes: Record<NonNullable<ModalProps["size"]>, string> = {
   md: "max-w-lg",
   lg: "max-w-2xl",
   xl: "max-w-4xl",
+  "2xl": "max-w-6xl",
+  "3xl": "max-w-[90rem]",
 };
 
 export function Modal({ open, onClose, title, children, size = "md" }: ModalProps) {
@@ -51,7 +53,7 @@ export function Modal({ open, onClose, title, children, size = "md" }: ModalProp
             <X size={16} />
           </button>
         </div>
-        <div className="max-h-[75vh] overflow-y-auto p-5">{children}</div>
+        <div className="max-h-[85vh] overflow-y-auto p-5">{children}</div>
       </div>
     </div>
   );

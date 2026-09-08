@@ -15,6 +15,8 @@ from api.v1.common.views import (
     CookieTokenLogoutView,
     CookieTokenObtainPairView,
     CookieTokenRefreshView,
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
     ThrottledTokenObtainPairView,
 )
 
@@ -43,6 +45,17 @@ urlpatterns = [
         "auth/token/cookie/logout/",
         CookieTokenLogoutView.as_view(),
         name="token-logout-cookie",
+    ),
+    # Recuperación de contraseña ("olvidé mi contraseña", sin autenticar).
+    path(
+        "auth/password/reset/",
+        PasswordResetRequestView.as_view(),
+        name="password-reset",
+    ),
+    path(
+        "auth/password/reset/confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="password-reset-confirm",
     ),
     # Domain routes
     path("users/", include(("api.v1.users.urls", "users"), namespace="users")),

@@ -9,3 +9,5 @@ class EquipmentConfig(AppConfig):
 
     def ready(self) -> None:
         from . import signals  # noqa: F401
+
+        print("EQUIPMENT APP iniciada correctamente")

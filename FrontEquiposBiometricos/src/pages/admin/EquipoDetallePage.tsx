@@ -51,7 +51,7 @@ export function EquipoDetallePage() {
               Hoja de vida del equipo
             </h1>
             <p className="text-sm text-app-muted">
-              Información, mantenimientos realizados y agendamientos.
+              Información, órdenes de trabajo y solicitudes.
             </p>
           </div>
         </div>

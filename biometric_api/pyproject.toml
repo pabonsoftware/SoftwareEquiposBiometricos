@@ -19,3 +19,19 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "config", "api"]
+
+[tool.pyright]
+include = ["apps", "api", "config"]
+exclude = ["**/migrations", "**/__pycache__", "**/node_modules", ".venv", "staticfiles"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+# django-types provee los stubs de Django vía el paquete `django-stubs` (PEP 561).
+reportMissingModuleSource = false
+# Pylance no puede ejecutar el plugin de mypy de django-stubs, así que no conoce los
+# atributos dinámicos de Django (PK `id`, `<fk>_id`, campos de `.annotate()`,
+# `get_<campo>_display()`, managers personalizados, relaciones inversas). Se apaga esta
+# regla para evitar falsos positivos; pyright sigue validando nombres/imports
+# inexistentes, tipos de argumentos y accesos a `None` reales.
+reportAttributeAccessIssue = false

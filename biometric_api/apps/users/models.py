@@ -14,11 +14,14 @@ phone_validator = RegexValidator(
 
 class User(AbstractUser):
     class Role(models.TextChoices):
-        SUPERADMIN = "superadmin", _("Superadministrador")
-        ADMIN = "admin", _("Administrador")
-        COORDINADOR = "coordinador", _("Coordinador")
-        INGENIERO = "ingeniero", _("Ingeniero biomédico")
-        TECNICO = "tecnico", _("Técnico")
+        # 4.1.1 — administración técnica del sistema + parametrización institucional.
+        ADMIN = "admin", _("SuperAdministrador del Sistema")
+        # 4.1.2 — aprueba, prioriza, asigna responsables y cierra formalmente.
+        COORDINADOR = "coordinador", _("Coordinador Biomédico")
+        # 4.1.3 — evaluación técnica + ejecución del mantenimiento.
+        INGENIERO = "ingeniero", _("Ingeniero Biomédico")
+        # Personal asistencial: consulta sus equipos y reporta fallas.
+        USUARIO = "usuario", _("Usuario Operativo")
 
     email = models.EmailField(_("Correo electrónico"), unique=True)
     first_name = models.CharField(_("Nombres"), max_length=150)
@@ -27,7 +30,7 @@ class User(AbstractUser):
         _("Rol"),
         max_length=20,
         choices=Role.choices,
-        default=Role.TECNICO,
+        default=Role.USUARIO,
     )
     phone = models.CharField(
         _("Teléfono"),
@@ -38,7 +41,7 @@ class User(AbstractUser):
 
     REQUIRED_FIELDS = ["email", "first_name", "last_name", "role"]
 
-    objects = UserManager()
+    objects: UserManager = UserManager()
 
     class Meta:
         verbose_name = _("Usuario")
@@ -55,4 +58,4 @@ class User(AbstractUser):
 
     @property
     def is_admin_role(self) -> bool:
-        return self.role in {self.Role.SUPERADMIN, self.Role.ADMIN}
+        return self.role == self.Role.ADMIN

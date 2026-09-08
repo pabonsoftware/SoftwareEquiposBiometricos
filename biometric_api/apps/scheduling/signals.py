@@ -8,4 +8,5 @@ from .tasks import send_schedule_notification
 @receiver(post_save, sender=MaintenanceSchedule)
 def trigger_schedule_notification(sender, instance: MaintenanceSchedule, created: bool, **kwargs):
     if created:
-        send_schedule_notification.delay(instance.pk)
+        # celery no trae type hints completos: pyright infiere `.delay` como list[str].
+        send_schedule_notification.delay(instance.pk)  # pyright: ignore[reportCallIssue]

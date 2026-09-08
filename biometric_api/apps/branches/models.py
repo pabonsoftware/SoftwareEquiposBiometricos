@@ -1,15 +1,27 @@
-from django.core.validators import RegexValidator
+from django.core.validators import EmailValidator, RegexValidator
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from .managers import BranchManager
 
 
+# Valida si el telefóno tiene formato válido
 phone_validator = RegexValidator(
     regex=r"^\+?[0-9\s\-()]{7,20}$",
     message=_("El teléfono no tiene un formato válido."),
 )
 
+# Valida si el correo es válido
+email_validator = EmailValidator(
+    message=_("El correo electrónico no es válido"),
+    code="Correo electrónico inválido",
+)
+
+# Valida si la dirección es válida
+address_validator = RegexValidator(
+    regex=r'^[\w\s.,#-]{5,200}$',
+    message=_("La dirección no es válida"),
+)
 
 class Branch(models.Model):
     name = models.CharField(
@@ -21,6 +33,7 @@ class Branch(models.Model):
     address = models.CharField(
         _("Dirección"),
         max_length=255,
+        validators=[address_validator]
     )
     city = models.CharField(
         _("Ciudad"),
@@ -34,7 +47,8 @@ class Branch(models.Model):
     )
     email = models.EmailField(
         _("Correo electrónico"),
-        blank=True,
+        unique=True,
+        validators=[email_validator]
     )
     is_active = models.BooleanField(
         _("Activa"),

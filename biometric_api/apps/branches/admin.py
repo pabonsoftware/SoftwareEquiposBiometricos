@@ -7,7 +7,7 @@ from .models import Branch
 @admin.register(Branch)
 class BranchAdmin(admin.ModelAdmin):
     list_display = ("name", "city", "phone", "email", "is_active", "created_at")
-    list_filter = ("is_active", "city")
+    list_filter = ("is_active", "city","name","address")
     search_fields = ("name", "address", "city", "email", "phone")
     ordering = ("name",)
     readonly_fields = ("created_at", "updated_at")

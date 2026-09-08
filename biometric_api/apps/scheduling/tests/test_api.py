@@ -235,10 +235,14 @@ class TestScheduleUpdate:
 
 
 class TestScheduleDelete:
-    def test_delete(self, auth_client, schedule):
-        response = auth_client.delete(detail_url(schedule.id))
+    def test_delete(self, management_client, schedule):
+        response = management_client.delete(detail_url(schedule.id))
         assert response.status_code == 204
         assert not MaintenanceSchedule.objects.filter(id=schedule.id).exists()
+
+    def test_delete_by_ingeniero_returns_403(self, auth_client, schedule):
+        """`auth_client` es un ingeniero: elabora el plan pero no lo elimina."""
+        assert auth_client.delete(detail_url(schedule.id)).status_code == 403
 
 
 class TestCompleteAction:

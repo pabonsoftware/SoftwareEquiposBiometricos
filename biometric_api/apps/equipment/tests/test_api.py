@@ -25,6 +25,9 @@ def regenerate_url(pk):
     return reverse("v1:equipment:equipment-regenerate-qr", args=[pk])
 
 
+QR_CODES_URL = reverse("v1:equipment:equipment-qr-codes")
+
+
 @pytest.mark.django_db
 class TestEquipmentAuth:
     def test_list_requires_auth(self, api_client):
@@ -131,6 +134,52 @@ class TestEquipmentList:
         EquipmentFactory()
         response = auth_client.get(LIST_URL, {"equipment_model": target_model.id})
         assert response.json()["count"] == 2
+
+
+@pytest.mark.django_db
+class TestEquipmentQrCodes:
+    def test_requires_auth(self, api_client):
+        assert api_client.get(QR_CODES_URL).status_code == 401
+
+    def test_returns_light_payload(self, auth_client):
+        EquipmentFactory()
+        body = auth_client.get(QR_CODES_URL).json()
+        row = body["results"][0]
+        assert set(row) == {
+            "id",
+            "asset_tag",
+            "name",
+            "brand_name",
+            "equipment_model_name",
+            "branch_name",
+            "qr_code_url",
+        }
+        assert row["qr_code_url"].endswith(".png")
+
+    def test_page_size_capped_at_20_by_backend(self, auth_client):
+        EquipmentFactory.create_batch(25)
+        body = auth_client.get(QR_CODES_URL).json()
+        assert body["count"] == 25
+        assert body["page_size"] == 20
+        assert len(body["results"]) == 20
+        assert body["next"] is not None
+
+    def test_client_cannot_override_page_size(self, auth_client):
+        EquipmentFactory.create_batch(25)
+        body = auth_client.get(QR_CODES_URL, {"page_size": 100}).json()
+        assert len(body["results"]) == 20
+
+    def test_second_page(self, auth_client):
+        EquipmentFactory.create_batch(25)
+        body = auth_client.get(QR_CODES_URL, {"page": 2}).json()
+        assert len(body["results"]) == 5
+        assert body["previous"] is not None
+
+    def test_filter_by_branch_and_search(self, auth_client):
+        target = BranchFactory()
+        EquipmentFactory.create_batch(2, branch=target)
+        EquipmentFactory()
+        assert auth_client.get(QR_CODES_URL, {"branch": target.id}).json()["count"] == 2
 
     def test_filter_by_brand(self, auth_client):
         target_brand = BrandFactory()

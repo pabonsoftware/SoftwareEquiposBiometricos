@@ -201,6 +201,36 @@ class EquipmentSerializer(serializers.ModelSerializer):
             )
         return value
 
+
+class EquipmentQrSerializer(serializers.ModelSerializer):
+    """Vista liviana para la galería de códigos QR: solo lo que se pinta en la
+    tarjeta (identificación + URL del PNG)."""
+
+    brand_name = serializers.CharField(source="equipment_model.brand.name", read_only=True)
+    equipment_model_name = serializers.CharField(source="equipment_model.name", read_only=True)
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    qr_code_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Equipment
+        fields = (
+            "id",
+            "asset_tag",
+            "name",
+            "brand_name",
+            "equipment_model_name",
+            "branch_name",
+            "qr_code_url",
+        )
+
+    def get_qr_code_url(self, obj: Equipment) -> str | None:
+        if not obj.qr_code:
+            return None
+        request = self.context.get("request")
+        url = obj.qr_code.url
+        return request.build_absolute_uri(url) if request else url
+
+
 class EquipmentAttachmentSerializer(serializers.ModelSerializer):
 
     uploaded_by_name = serializers.SerializerMethodField()
@@ -336,6 +366,15 @@ class WorkOrderCostSerializer(serializers.ModelSerializer):
 class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
 
     technician_name = serializers.SerializerMethodField()
+    equipment_name = serializers.CharField(source="equipment.name", read_only=True)
+    equipment_asset_tag = serializers.CharField(
+        source="equipment.asset_tag", read_only=True
+    )
+    service_type_display = serializers.CharField(
+        source="get_service_type_display", read_only=True
+    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    schedule_info = serializers.SerializerMethodField()
 
     class Meta:
 
@@ -344,20 +383,31 @@ class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "equipment",
+            "equipment_name",
+            "equipment_asset_tag",
             "number",
             "service_type",
+            "service_type_display",
             "start_date",
             "end_date",
             "description",
             "technician",
             "technician_name",
             "status",
+            "status_display",
             "report",
+            "schedule_info",
             "created_at",
         )
 
         read_only_fields = [
             "id",
+            "equipment_name",
+            "equipment_asset_tag",
+            "service_type_display",
+            "status_display",
+            "technician_name",
+            "schedule_info",
             "created_at",
         ]
 
@@ -371,5 +421,47 @@ class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
             or obj.technician.username
         )
 
+    def get_schedule_info(self, obj):
+        """Si la orden salió de una solicitud programada, devuelve un resumen
+        del agendamiento (vía la hoja de vida). `None` para órdenes creadas
+        directamente."""
+        record = getattr(obj, "maintenance_record", None)
+        schedule = getattr(record, "scheduled_maintenance", None) if record else None
+        if schedule is None:
+            return None
+        return {
+            "id": schedule.id,
+            "kind": schedule.kind,
+            "scheduled_date": schedule.scheduled_date,
+            "is_completed": schedule.is_completed,
+        }
+
     def validate_report(self, value):
         return validate_uploaded_file(value, allowed_extensions=DOCUMENT_EXTENSIONS)
+
+
+class EquipmentWorkOrderDetailSerializer(EquipmentWorkOrderSerializer):
+    """Orden de trabajo con todos sus elementos anidados (solo lectura): se usa
+    en la acción `work-orders/{id}/details/`."""
+
+    spare_parts = WorkOrderSparePartSerializer(many=True, read_only=True)
+    measurements = serializers.SerializerMethodField()
+    evidences = WorkOrderEvidenceSerializer(many=True, read_only=True)
+    signatures = WorkOrderSignatureSerializer(many=True, read_only=True)
+    cost = WorkOrderCostSerializer(read_only=True)
+
+    class Meta(EquipmentWorkOrderSerializer.Meta):
+        fields = EquipmentWorkOrderSerializer.Meta.fields + (
+            "spare_parts",
+            "measurements",
+            "evidences",
+            "signatures",
+            "cost",
+        )
+
+    def get_measurements(self, obj):
+        # `WorkOrderMeasurement.work_order` no define related_name, así que el
+        # acceso inverso es `workordermeasurement_set`.
+        return WorkOrderMeasurementSerializer(
+            obj.workordermeasurement_set.all(), many=True
+        ).data

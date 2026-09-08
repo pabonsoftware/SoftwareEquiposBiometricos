@@ -4,13 +4,11 @@ from django.urls import reverse
 from apps.users.models import User
 
 from .factories import (
-    AdminFactory,
+    CoordinadorFactory,
     IngenieroFactory,
-    SuperadminFactory,
     TecnicoFactory,
     UserFactory,
 )
-
 
 LIST_URL = reverse("v1:users:user-list")
 
@@ -63,7 +61,8 @@ class TestUserPermissions:
         }
         assert client.post(LIST_URL, payload, format="json").status_code == 403
 
-    def test_admin_cannot_create_superadmin(self, auth_client, admin):
+    def test_create_with_unknown_role_returns_400(self, auth_client, admin):
+        # "superadmin" ya no está en el catálogo de 4 roles (4.1).
         client = auth_client(admin)
         payload = {
             "username": "boss",
@@ -75,16 +74,17 @@ class TestUserPermissions:
         }
         response = client.post(LIST_URL, payload, format="json")
         assert response.status_code == 400
-        assert "superadministrador" in str(response.data).lower()
+        assert "role" in response.data
 
-    def test_superadmin_can_create_superadmin(self, auth_client, superadmin):
-        client = auth_client(superadmin)
+    def test_admin_can_create_admin(self, auth_client, admin):
+        # 4.1.1: el Administrador del Sistema asigna cualquiera de los 4 roles.
+        client = auth_client(admin)
         payload = {
             "username": "boss",
             "email": "boss@x.com",
             "first_name": "Big",
             "last_name": "Boss",
-            "role": "superadmin",
+            "role": "admin",
             "password": "Strongpass123!",
         }
         assert client.post(LIST_URL, payload, format="json").status_code == 201
@@ -124,7 +124,7 @@ class TestUserList:
 
     def test_filter_by_role(self, auth_client, admin):
         IngenieroFactory.create_batch(2)
-        TecnicoFactory.create_batch(3)
+        CoordinadorFactory.create_batch(3)
         client = auth_client(admin)
         response = client.get(LIST_URL, {"role": "ingeniero"})
         assert response.status_code == 200
@@ -223,17 +223,21 @@ class TestUserUpdate:
         target.refresh_from_db()
         assert target.first_name == "Renombrado"
 
-    def test_admin_cannot_promote_to_superadmin(self, auth_client, admin):
+    def test_patch_to_unknown_role_returns_400(self, auth_client, admin):
         target = TecnicoFactory()
         client = auth_client(admin)
         response = client.patch(detail_url(target.pk), {"role": "superadmin"}, format="json")
         assert response.status_code == 400
 
-    def test_superadmin_can_promote_to_superadmin(self, auth_client, superadmin):
+    def test_admin_can_promote_to_admin(self, auth_client, admin):
+        # 4.1.1: el Administrador del Sistema puede asignar cualquier rol,
+        # incluido el de otro administrador.
         target = TecnicoFactory()
-        client = auth_client(superadmin)
-        response = client.patch(detail_url(target.pk), {"role": "superadmin"}, format="json")
+        client = auth_client(admin)
+        response = client.patch(detail_url(target.pk), {"role": "admin"}, format="json")
         assert response.status_code == 200
+        target.refresh_from_db()
+        assert target.role == User.Role.ADMIN
 
     def test_patch_same_username_does_not_trigger_duplicate(self, auth_client, admin):
         target = TecnicoFactory(username="keepme")
@@ -299,6 +303,48 @@ class TestSetPassword:
         assert response.status_code == 204
         tecnico.refresh_from_db()
         assert tecnico.check_password("Newpass456!")
+
+    def test_change_sends_notification_email(self, auth_client, tecnico):
+        from django.core import mail
+
+        tecnico.set_password("Oldpass123!")
+        tecnico.save()
+        client = auth_client(tecnico)
+        response = client.post(
+            set_password_url(tecnico.pk),
+            {"current_password": "Oldpass123!", "new_password": "Newpass456!"},
+            format="json",
+        )
+        assert response.status_code == 204
+        assert len(mail.outbox) == 1
+        assert mail.outbox[0].to == [tecnico.email]
+
+    def test_confirm_mismatch_returns_400(self, auth_client, tecnico):
+        tecnico.set_password("Oldpass123!")
+        tecnico.save()
+        client = auth_client(tecnico)
+        response = client.post(
+            set_password_url(tecnico.pk),
+            {
+                "current_password": "Oldpass123!",
+                "new_password": "Newpass456!",
+                "confirm_new_password": "Otradistinta9!",
+            },
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "confirm_new_password" in response.data
+
+    def test_weak_password_without_complexity_returns_400(self, auth_client, tecnico):
+        tecnico.set_password("Oldpass123!")
+        tecnico.save()
+        client = auth_client(tecnico)
+        response = client.post(
+            set_password_url(tecnico.pk),
+            {"current_password": "Oldpass123!", "new_password": "solominusculas"},
+            format="json",
+        )
+        assert response.status_code == 400
 
     def test_self_change_with_wrong_current(self, auth_client, tecnico):
         tecnico.set_password("Oldpass123!")

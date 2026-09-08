@@ -1,0 +1,17 @@
+# Config local de editor (cada dev apunta su propio intérprete)
+.vscode/
+.idea/
+
+# Entornos virtuales de Python
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# OS
+.DS_Store
+Thumbs.db
+.ruff_cache

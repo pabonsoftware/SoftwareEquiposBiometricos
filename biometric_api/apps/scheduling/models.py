@@ -42,8 +42,8 @@ class MaintenanceSchedule(models.Model):
         null=True,
         blank=True,
         related_name="technician_schedules",
-        limit_choices_to={"role": "tecnico", "is_active": True},
-        verbose_name=_("Técnico asignado"),
+        limit_choices_to={"role": "ingeniero", "is_active": True},
+        verbose_name=_("Responsable de ejecución"),
     )
     notified_at = models.DateTimeField(_("Notificado el"), null=True, blank=True)
     is_completed = models.BooleanField(_("Completado"), default=False, db_index=True)

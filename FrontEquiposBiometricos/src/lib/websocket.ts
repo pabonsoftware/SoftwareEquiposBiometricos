@@ -44,6 +44,11 @@ function deriveWsBaseFromApi(): string {
 
 const AUTH_CLOSE_CODE = 4401;
 const MAX_BACKOFF_MS = 30_000;
+// Tope de reintentos: si tras esto el handshake sigue fallando (endpoint caído
+// o inexistente — un 404 se ve como cierre 1006, indistinguible de "server
+// abajo"), dejamos de intentar para no spamear la consola indefinidamente. Un
+// reload de la página reinicia el contador.
+const MAX_RETRY_ATTEMPTS = 6;
 
 class NotificationSocket {
   private socket: WebSocket | null = null;
@@ -140,6 +145,13 @@ class NotificationSocket {
 
   private scheduleReconnect(): void {
     if (!this.connected) return;
+    if (this.retryAttempt >= MAX_RETRY_ATTEMPTS) {
+      console.warn(
+        `[ws] handshake falló ${MAX_RETRY_ATTEMPTS} veces, se deja de reintentar`,
+      );
+      this.connected = false;
+      return;
+    }
     const baseDelay = Math.min(
       1000 * 2 ** this.retryAttempt,
       MAX_BACKOFF_MS,

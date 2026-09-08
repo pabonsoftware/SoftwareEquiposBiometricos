@@ -4,7 +4,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from api.v1.common.mixins import AuditLogMixin
-from api.v1.common.permissions import RestrictDeleteToManagement
+from api.v1.common.permissions import (
+    CoordBiomedicalPermission,
+    EngineerBiomedicalPermissions,
+    UserOperative,
+)
 from apps.failures.models import FailureRecord
 
 from .filters import FailureRecordFilter
@@ -16,7 +20,12 @@ class FailureRecordViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
     queryset = FailureRecord.objects.all()
     serializer_class = FailureRecordSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    # Usuario Operativo reporta la falla; Ingeniero emite la evaluación
+    # técnica (diagnóstico, recomendación) y Coordinador prioriza.
+    permission_classes = (
+        IsAuthenticated,
+        UserOperative | EngineerBiomedicalPermissions | CoordBiomedicalPermission,
+    )
     filterset_class = FailureRecordFilter
     search_fields = ("description", "resolution_notes", "equipment__asset_tag")
     ordering_fields = ("reported_at", "severity", "resolved_at")

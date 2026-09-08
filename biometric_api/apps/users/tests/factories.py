@@ -14,7 +14,7 @@ class UserFactory(DjangoModelFactory):
     email = factory.LazyAttribute(lambda obj: f"{obj.username}@example.com")
     first_name = "Nombre"
     last_name = "Apellido"
-    role = User.Role.TECNICO
+    role = User.Role.USUARIO
     phone = ""
     is_active = True
 
@@ -28,14 +28,10 @@ class UserFactory(DjangoModelFactory):
             self.save(update_fields=["password"])
 
 
-class SuperadminFactory(UserFactory):
-    role = User.Role.SUPERADMIN
-    is_staff = True
-    is_superuser = True
-
-
 class AdminFactory(UserFactory):
     role = User.Role.ADMIN
+    is_staff = True
+    is_superuser = True
 
 
 class CoordinadorFactory(UserFactory):
@@ -46,5 +42,12 @@ class IngenieroFactory(UserFactory):
     role = User.Role.INGENIERO
 
 
-class TecnicoFactory(UserFactory):
-    role = User.Role.TECNICO
+class UsuarioFactory(UserFactory):
+    role = User.Role.USUARIO
+
+
+# Aliases de compatibilidad tras la consolidación 7 → 4 roles:
+# superadmin → admin, tecnico → ingeniero, auditor → usuario.
+SuperadminFactory = AdminFactory
+TecnicoFactory = IngenieroFactory
+AuditorFactory = UsuarioFactory

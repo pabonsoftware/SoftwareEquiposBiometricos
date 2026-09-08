@@ -5,12 +5,10 @@ from django.urls import reverse
 from apps.equipment.models import AttachmentType, EvidenceType, WorkOrderType
 from apps.users.tests.factories import UserFactory
 
-from .factories import EquipmentFactory
-
 ATTACHMENTS_URL = reverse("v1:equipment:equipment-attachment-list")
 CERTIFICATES_URL = reverse("v1:equipment:equipment-certificate-list")
 WORK_ORDERS_URL = reverse("v1:equipment:equipment-work-order-list")
-EVIDENCES_URL = reverse("v1:equipment:work-order-measurement-list")
+EVIDENCES_URL = reverse("v1:equipment:work-order-evidence-list")
 
 
 def _pdf_file(name="doc.pdf"):
@@ -38,8 +36,8 @@ def _mismatched_pdf_file(name="fake.pdf"):
 
 @pytest.mark.django_db
 class TestEquipmentAttachmentFileValidation:
-    def test_rejects_disallowed_extension(self, auth_client, equipment):
-        response = auth_client.post(
+    def test_rejects_disallowed_extension(self, ingeniero_client, equipment):
+        response = ingeniero_client.post(
             ATTACHMENTS_URL,
             {
                 "equipment": equipment.id,
@@ -52,8 +50,8 @@ class TestEquipmentAttachmentFileValidation:
         assert response.status_code == 400
         assert "file" in response.json()
 
-    def test_rejects_content_that_does_not_match_extension(self, auth_client, equipment):
-        response = auth_client.post(
+    def test_rejects_content_that_does_not_match_extension(self, ingeniero_client, equipment):
+        response = ingeniero_client.post(
             ATTACHMENTS_URL,
             {
                 "equipment": equipment.id,
@@ -66,8 +64,8 @@ class TestEquipmentAttachmentFileValidation:
         assert response.status_code == 400
         assert "file" in response.json()
 
-    def test_rejects_oversized_file(self, auth_client, equipment):
-        response = auth_client.post(
+    def test_rejects_oversized_file(self, ingeniero_client, equipment):
+        response = ingeniero_client.post(
             ATTACHMENTS_URL,
             {
                 "equipment": equipment.id,
@@ -81,11 +79,11 @@ class TestEquipmentAttachmentFileValidation:
         assert "file" in response.json()
 
     def test_accepts_valid_file_and_forces_uploaded_by_to_request_user(
-        self, auth_client, admin_user, equipment
+        self, ingeniero_client, ingeniero, equipment
     ):
         other_user = UserFactory()
 
-        response = auth_client.post(
+        response = ingeniero_client.post(
             ATTACHMENTS_URL,
             {
                 "equipment": equipment.id,
@@ -99,7 +97,7 @@ class TestEquipmentAttachmentFileValidation:
         )
 
         assert response.status_code == 201
-        assert response.json()["uploaded_by"] == admin_user.id
+        assert response.json()["uploaded_by"] == ingeniero.id
         assert response.json()["uploaded_by"] != other_user.id
 
 
@@ -135,8 +133,8 @@ class TestEquipmentLifeSheetPdfValidation:
 
 @pytest.mark.django_db
 class TestEquipmentCertificateFileValidation:
-    def test_rejects_non_pdf_non_image(self, auth_client, equipment):
-        response = auth_client.post(
+    def test_rejects_non_pdf_non_image(self, ingeniero_client, equipment):
+        response = ingeniero_client.post(
             CERTIFICATES_URL,
             {
                 "equipment": equipment.id,
@@ -150,8 +148,8 @@ class TestEquipmentCertificateFileValidation:
         assert response.status_code == 400
         assert "file" in response.json()
 
-    def test_accepts_valid_pdf(self, auth_client, equipment):
-        response = auth_client.post(
+    def test_accepts_valid_pdf(self, ingeniero_client, equipment):
+        response = ingeniero_client.post(
             CERTIFICATES_URL,
             {
                 "equipment": equipment.id,
@@ -167,8 +165,8 @@ class TestEquipmentCertificateFileValidation:
 
 @pytest.mark.django_db
 class TestWorkOrderReportAndEvidenceValidation:
-    def test_work_order_report_rejects_non_pdf(self, auth_client, equipment):
-        response = auth_client.post(
+    def test_work_order_report_rejects_non_pdf(self, tecnico_client, equipment):
+        response = tecnico_client.post(
             WORK_ORDERS_URL,
             {
                 "equipment": equipment.id,
@@ -183,8 +181,8 @@ class TestWorkOrderReportAndEvidenceValidation:
         assert response.status_code == 400
         assert "report" in response.json()
 
-    def test_evidence_rejects_disallowed_extension(self, auth_client, equipment):
-        work_order = auth_client.post(
+    def test_evidence_rejects_disallowed_extension(self, tecnico_client, equipment):
+        work_order = tecnico_client.post(
             WORK_ORDERS_URL,
             {
                 "equipment": equipment.id,
@@ -196,7 +194,7 @@ class TestWorkOrderReportAndEvidenceValidation:
             format="multipart",
         ).json()
 
-        response = auth_client.post(
+        response = tecnico_client.post(
             EVIDENCES_URL,
             {
                 "work_order": work_order["id"],
@@ -209,8 +207,8 @@ class TestWorkOrderReportAndEvidenceValidation:
         assert response.status_code == 400
         assert "file" in response.json()
 
-    def test_evidence_accepts_valid_photo(self, auth_client, equipment):
-        work_order = auth_client.post(
+    def test_evidence_accepts_valid_photo(self, tecnico_client, equipment):
+        work_order = tecnico_client.post(
             WORK_ORDERS_URL,
             {
                 "equipment": equipment.id,
@@ -222,7 +220,7 @@ class TestWorkOrderReportAndEvidenceValidation:
             format="multipart",
         ).json()
 
-        response = auth_client.post(
+        response = tecnico_client.post(
             EVIDENCES_URL,
             {
                 "work_order": work_order["id"],

@@ -9,12 +9,16 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/context/AuthContext";
 import { usersService } from "@/services/users.service";
-import { ROLE_LABEL, can, canAssignRole } from "@/lib/permissions";
+import {
+  ALL_ROLES,
+  NO_PERMISSION_HINT,
+  ROLE_LABEL,
+  can,
+  canAssignRole,
+} from "@/lib/permissions";
 import { getApiErrorMessage } from "@/lib/api";
 import type { Rol, Usuario } from "@/types/auth";
 import type { CreateUserInput } from "@/types/user";
-
-const ALL_ROLES: Rol[] = ["superadmin", "admin", "coordinador", "ingeniero", "tecnico"];
 
 interface FormState {
   username: string;
@@ -32,7 +36,7 @@ const empty: FormState = {
   email: "",
   first_name: "",
   last_name: "",
-  role: "tecnico",
+  role: "usuario",
   phone: "",
   password: "",
   is_active: true,
@@ -137,7 +141,7 @@ export function UsuariosPage() {
   const openCreate = () => {
     setForm({
       ...empty,
-      role: assignableRoles[0] ?? "tecnico",
+      role: assignableRoles[0] ?? "usuario",
     });
     setCreating(true);
   };
@@ -242,11 +246,14 @@ export function UsuariosPage() {
             Administra los usuarios del sistema y sus roles.
           </p>
         </div>
-        {canCreate && assignableRoles.length > 0 && (
-          <Button leftIcon={<Plus size={16} />} onClick={openCreate}>
-            Nuevo usuario
-          </Button>
-        )}
+        <Button
+          leftIcon={<Plus size={16} />}
+          onClick={openCreate}
+          disabled={!canCreate || assignableRoles.length === 0}
+          title={canCreate ? undefined : NO_PERMISSION_HINT}
+        >
+          Nuevo usuario
+        </Button>
       </div>
 
       <Card>
@@ -448,11 +455,6 @@ export function UsuariosPage() {
             onChange={(e) => setForm({ ...form, role: e.target.value as Rol })}
             options={roleOptions}
             required
-            hint={
-              role === "admin"
-                ? "Como admin no puedes asignar rol superadmin/admin."
-                : undefined
-            }
           />
           <Input
             label="Teléfono"
@@ -466,7 +468,7 @@ export function UsuariosPage() {
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               required
-              hint="Mínimo 8 caracteres. El superadmin/admin la define."
+              hint="Mínimo 8 caracteres. La define el administrador del sistema."
               className="sm:col-span-2"
             />
           )}

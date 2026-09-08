@@ -30,7 +30,16 @@ def admin_user(db):
 
 
 @pytest.fixture
-def auth_client(api_client, admin_user):
+def auth_client(api_client, ingeniero):
+    """Cliente autenticado como Ingeniero Biomédico: es el rol que elabora el
+    plan anual de mantenimiento preventivo (crear/editar cronogramas)."""
+    api_client.force_authenticate(user=ingeniero)
+    return api_client
+
+
+@pytest.fixture
+def management_client(api_client, admin_user):
+    """Cliente con autoridad administrativa (admin): puede eliminar cronogramas."""
     api_client.force_authenticate(user=admin_user)
     return api_client
 

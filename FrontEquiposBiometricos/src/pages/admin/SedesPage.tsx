@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/context/AuthContext";
 import { branchesService } from "@/services/branches.service";
-import { can } from "@/lib/permissions";
+import { NO_PERMISSION_HINT, can } from "@/lib/permissions";
 import { getApiErrorMessage } from "@/lib/api";
 import type { Branch, BranchInput } from "@/types/branch";
 
@@ -127,11 +127,14 @@ export function SedesPage() {
             Administra las sedes (centros) de la institución.
           </p>
         </div>
-        {canCreate && (
-          <Button leftIcon={<Plus size={16} />} onClick={openCreate}>
-            Nueva sede
-          </Button>
-        )}
+        <Button
+          leftIcon={<Plus size={16} />}
+          onClick={openCreate}
+          disabled={!canCreate}
+          title={canCreate ? undefined : NO_PERMISSION_HINT}
+        >
+          Nueva sede
+        </Button>
       </div>
 
       <Card>

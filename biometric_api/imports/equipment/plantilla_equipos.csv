@@ -1,0 +1,3 @@
+name,asset_tag,serial,internal_code,brand,equipment_model,branch,location,technology_type,risk_class,manufacturer,owner,purchase_date,equipment_cost,warranty_end_date,maintenance_frequency_months,status,observations
+Monitor de signos vitales,EQ-1001,SN-AA-001,NT-001,Mindray,uMEC10,Sede Principal,UCI - Cama 3,ELECTROMEDICAL,IIB,Mindray,Clínica,2023-05-12,4500000,2026-05-12,6,ACTIVE,Ingresa por compra 2023
+Bomba de infusión,EQ-1002,SN-BB-002,NT-002,B. Braun,Infusomat Space,Sede Norte,Hospitalización piso 2,ELECTROMEDICAL,IIB,B. Braun,Clínica,2022-11-01,3200000,2025-11-01,12,ACTIVE,

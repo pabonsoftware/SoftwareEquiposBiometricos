@@ -10,7 +10,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/context/AuthContext";
 import { failuresService } from "@/services/failures.service";
 import { equipmentService } from "@/services/equipment.service";
-import { can } from "@/lib/permissions";
+import { NO_PERMISSION_HINT, can } from "@/lib/permissions";
 import { getApiErrorMessage } from "@/lib/api";
 import type { Equipment } from "@/types/equipment";
 import type {
@@ -105,10 +105,17 @@ export function FallasPage() {
   };
 
   useEffect(() => {
-    void Promise.all([
-      load(),
-      equipmentService.list({ ordering: "name" }).then(setEquipment).catch(() => null),
-    ]);
+    // El fetch inicial vive en una función anidada: así los setState quedan en
+    // un callback diferido y no en el cuerpo síncrono del efecto.
+    void (async () => {
+      await Promise.all([
+        load(),
+        equipmentService
+          .list({ ordering: "name" })
+          .then(setEquipment)
+          .catch(() => null),
+      ]);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -190,11 +197,14 @@ export function FallasPage() {
             Registra y resuelve fallas reportadas en los equipos biomédicos.
           </p>
         </div>
-        {canCreate && (
-          <Button leftIcon={<Plus size={16} />} onClick={openCreate}>
-            Nuevo reporte
-          </Button>
-        )}
+        <Button
+          leftIcon={<Plus size={16} />}
+          onClick={openCreate}
+          disabled={!canCreate}
+          title={canCreate ? undefined : NO_PERMISSION_HINT}
+        >
+          Nuevo reporte
+        </Button>
       </div>
 
       <Card>
@@ -302,7 +312,7 @@ export function FallasPage() {
                     </td>
                     <td className="py-3">
                       <div className="flex justify-end gap-2">
-                        {canEdit && !f.resolved && (
+                        {!f.resolved && (
                           <Button
                             size="sm"
                             variant="secondary"
@@ -311,6 +321,8 @@ export function FallasPage() {
                               setResolveTarget(f);
                               setResolveNotes("");
                             }}
+                            disabled={!canEdit}
+                            title={canEdit ? undefined : NO_PERMISSION_HINT}
                           >
                             Resolver
                           </Button>

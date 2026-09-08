@@ -11,18 +11,17 @@ from .factories import UserFactory
 class TestUserModel:
     def test_str(self):
         u = UserFactory(username="juan", role=User.Role.INGENIERO)
-        assert str(u) == "juan (Ingeniero biomédico)"
+        assert str(u) == "juan (Ingeniero Biomédico)"
 
-    def test_default_role_is_tecnico(self):
+    def test_default_role_is_usuario(self):
         u = User(username="x", email="x@x.com", first_name="A", last_name="B")
-        assert u.role == User.Role.TECNICO
+        assert u.role == User.Role.USUARIO
 
     def test_is_admin_role_property(self):
-        assert UserFactory(role=User.Role.SUPERADMIN).is_admin_role
         assert UserFactory(role=User.Role.ADMIN).is_admin_role
         assert not UserFactory(role=User.Role.COORDINADOR).is_admin_role
         assert not UserFactory(role=User.Role.INGENIERO).is_admin_role
-        assert not UserFactory(role=User.Role.TECNICO).is_admin_role
+        assert not UserFactory(role=User.Role.USUARIO).is_admin_role
 
     def test_phone_invalid_raises(self):
         u = UserFactory.build(phone="abc")
@@ -50,20 +49,20 @@ class TestUserManager:
     def test_by_role(self):
         UserFactory(role=User.Role.INGENIERO)
         UserFactory(role=User.Role.INGENIERO)
-        UserFactory(role=User.Role.TECNICO)
+        UserFactory(role=User.Role.COORDINADOR)
         assert User.objects.by_role(User.Role.INGENIERO).count() == 2
 
     def test_staff_roles(self):
-        UserFactory(role=User.Role.SUPERADMIN, is_staff=True, is_superuser=True)
-        UserFactory(role=User.Role.ADMIN)
-        UserFactory(role=User.Role.TECNICO)
-        assert User.objects.staff_roles().count() == 2
+        UserFactory(role=User.Role.ADMIN, is_staff=True, is_superuser=True)
+        UserFactory(role=User.Role.COORDINADOR)
+        UserFactory(role=User.Role.INGENIERO)
+        assert User.objects.staff_roles().count() == 1
 
     def test_create_user_defaults(self):
         u = User.objects.create_user(username="alice", email="alice@x.com", password="secret123")
         assert u.is_staff is False
         assert u.is_superuser is False
-        assert u.role == User.Role.TECNICO
+        assert u.role == User.Role.USUARIO
         assert u.check_password("secret123")
 
     def test_create_superuser_defaults(self):
@@ -76,7 +75,7 @@ class TestUserManager:
         )
         assert u.is_staff is True
         assert u.is_superuser is True
-        assert u.role == User.Role.SUPERADMIN
+        assert u.role == User.Role.ADMIN
 
     def test_create_user_requires_username(self):
         with pytest.raises(ValueError, match="nombre de usuario es obligatorio"):

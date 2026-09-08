@@ -94,7 +94,9 @@ class TestPdfUploadCreate:
 
 
 class TestPdfReplaceOnPatch:
-    def test_patch_with_new_pdf_replaces_previous_file(self, auth_client, equipment):
+    def test_patch_with_new_pdf_replaces_previous_file(
+        self, auth_client, equipment, django_capture_on_commit_callbacks
+    ):
         record = MaintenanceRecordFactory(
             equipment=equipment, pdf_file=_pdf_file("old.pdf", b"%PDF-1.4 old")
         )
@@ -102,11 +104,14 @@ class TestPdfReplaceOnPatch:
         old_path = record.pdf_file.name
         assert storage.exists(old_path)
 
-        response = auth_client.patch(
-            detail_url(record.id),
-            {"pdf_file": _pdf_file("new.pdf", b"%PDF-1.4 new")},
-            format="multipart",
-        )
+        # El borrado del archivo anterior se agenda con transaction.on_commit;
+        # hay que ejecutar esos callbacks para observarlo en el test.
+        with django_capture_on_commit_callbacks(execute=True):
+            response = auth_client.patch(
+                detail_url(record.id),
+                {"pdf_file": _pdf_file("new.pdf", b"%PDF-1.4 new")},
+                format="multipart",
+            )
 
         assert response.status_code == 200
         record.refresh_from_db()
@@ -116,22 +121,26 @@ class TestPdfReplaceOnPatch:
 
 
 class TestPdfDeleteOnRecordDelete:
-    def test_delete_record_removes_pdf_from_storage(self, auth_client, equipment):
+    def test_delete_record_removes_pdf_from_storage(
+        self, management_client, equipment, django_capture_on_commit_callbacks
+    ):
         record = MaintenanceRecordFactory(equipment=equipment, pdf_file=_pdf_file("to_delete.pdf"))
         storage = record.pdf_file.storage
         path = record.pdf_file.name
         assert storage.exists(path)
 
-        response = auth_client.delete(detail_url(record.id))
+        # El signal pre_delete borra el archivo con transaction.on_commit.
+        with django_capture_on_commit_callbacks(execute=True):
+            response = management_client.delete(detail_url(record.id))
 
         assert response.status_code == 204
         assert not MaintenanceRecord.objects.filter(pk=record.id).exists()
         assert not storage.exists(path)
 
-    def test_delete_record_without_pdf_does_not_error(self, auth_client, equipment):
+    def test_delete_record_without_pdf_does_not_error(self, management_client, equipment):
         record = MaintenanceRecordFactory(equipment=equipment)
         assert not record.pdf_file
 
-        response = auth_client.delete(detail_url(record.id))
+        response = management_client.delete(detail_url(record.id))
 
         assert response.status_code == 204

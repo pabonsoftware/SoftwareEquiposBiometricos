@@ -17,7 +17,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { brandsService } from "@/services/brands.service";
 import { modelsService } from "@/services/models.service";
 import { useAuth } from "@/context/AuthContext";
-import { can } from "@/lib/permissions";
+import { NO_PERMISSION_HINT, can } from "@/lib/permissions";
 import { getApiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { Brand, BrandInput, EquipmentModel, ModelInput } from "@/types/brand";
@@ -32,9 +32,9 @@ export function MarcasModelosPanel({ onChanged }: Props) {
   const { usuario } = useAuth();
   const role = usuario?.role;
 
-  const canCreate = can(role, "equipment", "create");
-  const canEdit = can(role, "equipment", "edit");
-  const canDelete = can(role, "equipment", "delete");
+  const canCreate = can(role, "catalog", "create");
+  const canEdit = can(role, "catalog", "edit");
+  const canDelete = can(role, "catalog", "delete");
 
   // ---- Estado ----
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -252,15 +252,15 @@ export function MarcasModelosPanel({ onChanged }: Props) {
               </p>
             </div>
           </div>
-          {canCreate && (
-            <Button
-              size="sm"
-              leftIcon={<Plus size={14} />}
-              onClick={openCreateBrand}
-            >
-              Nueva
-            </Button>
-          )}
+          <Button
+            size="sm"
+            leftIcon={<Plus size={14} />}
+            onClick={openCreateBrand}
+            disabled={!canCreate}
+            title={canCreate ? undefined : NO_PERMISSION_HINT}
+          >
+            Nueva
+          </Button>
         </div>
 
         <div className="border-b border-app px-3 py-2">
@@ -364,16 +364,15 @@ export function MarcasModelosPanel({ onChanged }: Props) {
               </p>
             </div>
           </div>
-          {canCreate && (
-            <Button
-              size="sm"
-              leftIcon={<Plus size={14} />}
-              onClick={openCreateModel}
-              disabled={brands.length === 0}
-            >
-              Nuevo
-            </Button>
-          )}
+          <Button
+            size="sm"
+            leftIcon={<Plus size={14} />}
+            onClick={openCreateModel}
+            disabled={!canCreate || brands.length === 0}
+            title={canCreate ? undefined : NO_PERMISSION_HINT}
+          >
+            Nuevo
+          </Button>
         </div>
 
         <div className="border-b border-app px-3 py-2">

@@ -17,6 +17,7 @@ import {
 import { ToastContainer } from "@/components/ui/ToastContainer";
 import type { ToastData } from "@/components/ui/Toast";
 import { notificationsSocket } from "@/lib/websocket";
+import { REALTIME_NOTIFICATIONS_ENABLED } from "@/lib/featureFlags";
 import type { NotificationEvent } from "@/types/notifications";
 import { useAuth } from "./AuthContext";
 
@@ -38,7 +39,7 @@ function toastFromEvent(event: NotificationEvent): Omit<ToastData, "id"> {
     case "schedule_email_sent": {
       const sentAtLocal = formatLocalTime(event.sent_at);
       return {
-        title: "Correo de agendamiento enviado",
+        title: "Correo de solicitud enviado",
         body: `${event.equipment_asset_tag} · ${event.scheduled_date}`,
         meta: `${event.branch_name} · ${sentAtLocal}`,
       };
@@ -82,7 +83,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Ciclo de vida del socket atado al usuario autenticado.
   useEffect(() => {
-    if (!usuario) {
+    // El canal en tiempo real está detrás de un flag: mientras el backend no
+    // exponga /ws/notifications/ (django-channels), no intentamos conectar
+    // para no llenar la consola de 404 + reintentos.
+    if (!usuario || !REALTIME_NOTIFICATIONS_ENABLED) {
       notificationsSocket.disconnect();
       return;
     }

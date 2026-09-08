@@ -15,10 +15,6 @@ from .models import (
 )
 
 
-# =====================================
-# INSTRUCIONES DEL EQUIPO 
-# =====================================
-
 class EquipmentInstructionInline(admin.TabularInline):
 
     model = EquipmentInstruction
@@ -27,9 +23,6 @@ class EquipmentInstructionInline(admin.TabularInline):
 
     ordering = ("instruction_type","sequence",)
 
-# ========================================
-# INLINE: CERTIFICADOS DEL EQUIPO
-# ========================================
 
 class EquipmentCertificateInline(admin.TabularInline):
 
@@ -37,10 +30,6 @@ class EquipmentCertificateInline(admin.TabularInline):
     extra = 0
     fields = ("certificate_number","certificate_date","responsible","observations","file",)
     ordering = ("-certificate_date",)
-
-# ===============================================
-# INLINE: ARCHIVOS DEL EQUIPO 
-# ===============================================
 
 class EquipmentAttachmentInline(admin.TabularInline):
 
@@ -50,9 +39,7 @@ class EquipmentAttachmentInline(admin.TabularInline):
     readonly_fields = ("uploaded_at",)
     ordering = ("-uploaded_at",)
 
-# =========================================
-# INLINE: ÓRDENES DE TRABAJO DEL EQUIPO
-# =========================================
+
 
 class EquipmentWorkOrderInline(admin.TabularInline):
 
@@ -62,9 +49,7 @@ class EquipmentWorkOrderInline(admin.TabularInline):
     show_change_link = True
     ordering = ("-start_date",)
 
-# =========================================
-# INLINE: REPUESTOS
-# =========================================
+
 class WorkOrderSparePartInline(admin.TabularInline):
 
     model = WorkOrderSparePart
@@ -72,19 +57,12 @@ class WorkOrderSparePartInline(admin.TabularInline):
     fields = ("name","reference","quantity","unit_cost","total_cost",)
 
 
-# =========================================
-# INLINE: MEDICIONES
-# =========================================
-
 class WorkOrderMeasurementInline(admin.TabularInline):
 
     model = WorkOrderMeasurement
     extra = 0
     fields = ("parameter","expected_value","measured_value","unit","passed",)
 
-# ==========================================
-# INLINE: EVIDENCIAS
-# ==========================================
 
 class WorkOrderEvidenceInline(admin.TabularInline):
 
@@ -92,9 +70,6 @@ class WorkOrderEvidenceInline(admin.TabularInline):
     extra = 0
     fields = ("evidence_type","description","file",)
 
-# ==========================================
-# INLINE: FIRMAS 
-# ==========================================
 
 class WorkOrderSignatureInline(admin.TabularInline):
 
@@ -103,9 +78,7 @@ class WorkOrderSignatureInline(admin.TabularInline):
     fields = ("role""signed_by","signed_at",)
     read_only_fields = ("signed_at",)
 
-# ====================================================
-# INLINE: COSTOS
-# ====================================================
+
 
 class WorkOrderCostInline(admin.TabularInline):
 
@@ -115,9 +88,6 @@ class WorkOrderCostInline(admin.TabularInline):
     fields = ("labor_cost","spare_parts_cost","transport_cost","other_cost",)
 
 
-# ==========================================
-# EQUIPMENT
-# ==========================================
 @admin.register(Equipment)
 class EquipmentAdmin(admin.ModelAdmin):
     list_display = ("name","asset_tag","serial","equipment_model","branch","technology_type","risk_class","status","purchase_date","mtbf_hours","mttr_hours","created_at",)
@@ -150,10 +120,6 @@ class EquipmentAdmin(admin.ModelAdmin):
     )
 
 
-
-# ===============================================================
-# EQUIPMENT WORK ORDER
-# ===============================================================
 
 @admin.register(EquipmentWorkOrder)
 class EquipmentWorkOrderAdmin(admin.ModelAdmin):
@@ -251,10 +217,6 @@ class EquipmentWorkOrderAdmin(admin.ModelAdmin):
                 WorkOrderCostInline,
     )
 
-# ====================================================================
-# EQUIPMENT INSTRUCION
-# ====================================================================
-
 @admin.register(EquipmentInstruction)
 class EquipmentInstructionAdmin(admin.ModelAdmin):
 
@@ -285,10 +247,6 @@ class EquipmentInstructionAdmin(admin.ModelAdmin):
         "equipment",
 
     )
-
-# ===========================================================
-# EQUIPMENT CERTIFICATE
-# ===========================================================
 
 @admin.register(EquipmentCertificate)
 class EquipmentCertificateAdmin(admin.ModelAdmin):
@@ -322,10 +280,6 @@ class EquipmentCertificateAdmin(admin.ModelAdmin):
     readonly_fields = (
         "created_at",
     )
-
-# ===================================================================
-# EQUIPMENT ATTACHMENT
-# ===================================================================
 
 @admin.register(EquipmentAttachment)
 class EquipmentAttachmentAdmin(admin.ModelAdmin):
@@ -362,10 +316,6 @@ class EquipmentAttachmentAdmin(admin.ModelAdmin):
     )
 
 
-# ==================================================================
-# WORK ORDER MEASUREMENT
-# ==================================================================
-
 @admin.register(WorkOrderMeasurement)
 class WorkOrderMeaasurementAdmin(admin.ModelAdmin):
 
@@ -394,9 +344,6 @@ class WorkOrderMeaasurementAdmin(admin.ModelAdmin):
         "work_order",
     )
 
-# ============================================================
-# WORK ORDER EVIDENCE
-# ============================================================
 
 @admin.register(WorkOrderEvidence)
 class WorkOrderEvidenceAdmin(admin.ModelAdmin):
@@ -420,9 +367,6 @@ class WorkOrderEvidenceAdmin(admin.ModelAdmin):
     )
 
 
-# =================================================================
-# WORK ORDER SIGNATURE
-# =================================================================
 
 @admin.register(WorkOrderSignature)
 class WorkOrderSignatureAdmin(admin.ModelAdmin):
@@ -458,12 +402,8 @@ class WorkOrderSignatureAdmin(admin.ModelAdmin):
 
 
 
-# ==================================================================
-# WORK ORDER COST
-# ================================================================== 
-
 @admin.register(WorkOrderCost)
-class WorkOrderCost(admin.ModelAdmin):
+class WorkOrderCostAdmin(admin.ModelAdmin):
 
     list_display = (
         "work_order",

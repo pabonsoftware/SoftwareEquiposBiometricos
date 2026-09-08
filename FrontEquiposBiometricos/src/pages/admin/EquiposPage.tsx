@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Building,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -12,7 +11,6 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
-import { Tabs } from "@/components/ui/Tabs";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EquipoFicha } from "@/components/equipment/EquipoFicha";
 import { MarcasModelosPanel } from "@/pages/admin/equipos/MarcasModelosPanel";
@@ -21,7 +19,7 @@ import { equipmentService } from "@/services/equipment.service";
 import { branchesService } from "@/services/branches.service";
 import { brandsService } from "@/services/brands.service";
 import { modelsService } from "@/services/models.service";
-import { can } from "@/lib/permissions";
+import { NO_PERMISSION_HINT, can } from "@/lib/permissions";
 import { getApiErrorMessage } from "@/lib/api";
 import type { Branch } from "@/types/branch";
 import type { Brand, EquipmentModel } from "@/types/brand";
@@ -178,13 +176,10 @@ const empty: FormState = {
   observations:"",
 };
 
-type Tab = "equipos" | "catalogo";
 
 export function EquiposPage() {
   const { usuario } = useAuth();
   const role = usuario?.role;
-
-  const [tab, setTab] = useState<Tab>("equipos");
 
   const [items, setItems] = useState<Equipment[]>([]);
   const [count, setCount] = useState(0);
@@ -305,13 +300,12 @@ export function EquiposPage() {
   }, [search, statusFilter, branchFilter, brandFilter, riskFilter]);
 
   useEffect(() => {
-    if (tab !== "equipos") return;
     const id = window.setTimeout(() => {
       void load(page);
     }, 300);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, statusFilter, branchFilter, brandFilter, riskFilter, page, tab]);
+  }, [search, statusFilter, branchFilter, brandFilter, riskFilter, page]);
 
   // ---- CRUD equipo ----
   const openCreate = () => {
@@ -542,42 +536,19 @@ export function EquiposPage() {
             Inventario, catálogo de marcas y modelos.
           </p>
         </div>
-        {tab === "equipos" && canCreate && (
-          <Button leftIcon={<Plus size={16} />} onClick={openCreate}>
-            Nuevo equipo
-          </Button>
-        )}
+        <Button
+          leftIcon={<Plus size={16} />}
+          onClick={openCreate}
+          disabled={!canCreate}
+          title={canCreate ? undefined : NO_PERMISSION_HINT}
+        >
+          Nuevo equipo
+        </Button>
       </div>
 
-      <Tabs<Tab>
-        value={tab}
-        onChange={setTab}
-        items={[
-          {
-            value: "equipos",
-            label: "Equipos",
-            icon: <ClipboardList size={14} />,
-          },
-          {
-            value: "catalogo",
-            label: "Marcas y modelos",
-            icon: <Building size={14} />,
-          },
-        ]}
-      />
-
-      {tab === "catalogo" && (
-        <MarcasModelosPanel
-          onChanged={() => {
-            void loadCatalog();
-          }}
-        />
-      )}
-
-      {tab === "equipos" && (
-        <>
-          <Card>
-            <div className="grid gap-2 sm:grid-cols-5">
+      {/* Sección de inventario de equipos */}
+      <Card>
+        <div className="grid gap-2 sm:grid-cols-5">
               <Input
                 placeholder="Buscar nombre o tag..."
                 value={search}
@@ -753,18 +724,26 @@ export function EquiposPage() {
                 </Button>
               </div>
             </div>
-          </Card>
-        </>
-      )}
+      </Card>
+
+      {/* Catálogo de marcas y modelos — unificado debajo del inventario */}
+      <MarcasModelosPanel
+        onChanged={() => {
+          void loadCatalog();
+        }}
+      />
 
       <Modal
         open={creating || !!editing}
         onClose={closeModal}
         title={editing ? "Editar equipo" : "Nuevo equipo"}
-        size="lg"
+        size="3xl"
       >
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-          <div className="text-sm font-semibold text-app">
+        <form
+          onSubmit={submit}
+          className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        >
+          <div className="col-span-full">
             <h3 className="text-sm font-semibold text-app">
               Identificación del equipo
             </h3>
@@ -777,7 +756,7 @@ export function EquiposPage() {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             required
-            className="sm:col-span-2"
+            className="col-span-full"
           />
           <Input
             label="Asset tag"
@@ -811,7 +790,7 @@ export function EquiposPage() {
             })
           }
           />
-          <div className="sm:col-span-2 mt-2">
+          <div className="col-span-full mt-4 border-t border-app pt-4">
             <h3 className="text-sm font-semibold text-app">
               Clasificación y catálogo
             </h3>
@@ -908,11 +887,11 @@ export function EquiposPage() {
             hint="Clasificación INVIMA / FDA del dispositivo médico."
           />
 
-          <div className="sm:col-psan-2 mt-2">
+          <div className="col-span-full mt-4 border-t border-app pt-4">
             <h3 className="text-sm font-semibold text-app">
               Información y ubicación
             </h3>
-            <p className="text-xs-text-app-muted">
+            <p className="text-xs text-app-muted">
               Datos generales y ubicación física del equipo.
             </p>
           </div>
@@ -1002,9 +981,9 @@ export function EquiposPage() {
             value={form.location}
             onChange={(e) => setForm({ ...form, location: e.target.value })}
             required
-            className="sm:col-span-2"
+            className="col-span-full"
           />
-          <div className="sm:col-span-2 mt-2">
+          <div className="col-span-full mt-4 border-t border-app pt-4">
             <h3 className="text-sm font-semibold text-app">
               Adquisición
             </h3>
@@ -1020,7 +999,7 @@ export function EquiposPage() {
               setForm({ ...form, purchase_date: e.target.value })
             }
             required
-            className="sm:col-span-2"
+            className="col-span-full"
           />
           <Input
           label="Fecha de fabricación"
@@ -1068,7 +1047,7 @@ export function EquiposPage() {
         }
         />
 
-        <div className="sm:col-span-2 mt-2">
+        <div className="col-span-full mt-4 border-t border-app pt-4">
           <h3 className="text-sm font-semibold text-app">
             Garantía
           </h3>
@@ -1097,7 +1076,7 @@ export function EquiposPage() {
         }
         />
 
-        <div className="sm:col-span-2 mt-2">
+        <div className="col-span-full mt-4 border-t border-app pt-4">
           <h3 className="text-sm font-semibold text-app">
             Mantenimiento
           </h3>
@@ -1147,7 +1126,7 @@ export function EquiposPage() {
           })
         }
         />
-        <div className="sm:col-span-2.mt-2">
+        <div className="col-span-full mt-4 border-t border-app pt-4">
           <h3 className="text-sm font-semibold text-app">
             Calibración
           </h3>
@@ -1184,7 +1163,7 @@ export function EquiposPage() {
           })
         }
         />
-        <div className="sm:col-span-2 mt-2">
+        <div className="col-span-full mt-4 border-t border-app pt-4">
           <h3 className="text-sm font-semibold text-app">
             Seguridad eléctrica
           </h3>
@@ -1209,8 +1188,8 @@ export function EquiposPage() {
           })
         }
         />
-        <div className="sm:col-span-2.mt-2">
-          <h3 className="text-sm font-semiboold text-app">
+        <div className="col-span-full mt-4 border-t border-app pt-4">
+          <h3 className="text-sm font-semibold text-app">
             Información regulatoria
           </h3>
         </div>
@@ -1234,7 +1213,7 @@ export function EquiposPage() {
           })
         }
         />
-        <div className="sm:col-span-2 mt-2">
+        <div className="col-span-full mt-4 border-t border-app pt-4">
           <h3 className="text-sm font-semibold text-app">
             Vida útil
           </h3>
@@ -1264,13 +1243,13 @@ export function EquiposPage() {
             }))}
           />
 
-          <div className="sm:col-span-2.mt-2">
+          <div className="col-span-full mt-4 border-t border-app pt-4">
             <h3 className="text-sm font-semibold text-app">
               Observaciones
             </h3>
           </div>
          
-          <div className="sm:col-span-2">
+          <div className="col-span-full">
             <textarea value={form.observations} onChange={(e) =>
               setForm({
                 ...form,
@@ -1282,7 +1261,7 @@ export function EquiposPage() {
             className="w-full rounded-lg border-app bg-app px-3 py-3 text-sm text-app outline-none transition placeholder:text-app-muted focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]/20 "
             />
           </div>
-          <div className="flex justify-end gap-2 sm:col-span-2">
+          <div className="col-span-full mt-4 flex justify-end gap-2 border-t border-app pt-4">
             <Button variant="secondary" onClick={closeModal} type="button">
               Cancelar
             </Button>

@@ -15,5 +15,8 @@ django-debug-toolbar==4.3.0
 ruff==0.4.4
 ipython==8.24.0
 
+# --- Type checking (stubs de Django para Pylance/pyright) ---
+django-types==0.24.0
+
 # --- Celery monitoring (UI) ---
 flower==2.0.1

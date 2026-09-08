@@ -136,14 +136,21 @@ export function MantenimientosPage() {
   };
 
   useEffect(() => {
-    void Promise.all([
-      load(),
-      equipmentService.list({ ordering: "name" }).then(setEquipment).catch(() => null),
-      schedulingService
-        .list({ is_completed: false, ordering: "scheduled_date" })
-        .then(setPendingSchedules)
-        .catch(() => null),
-    ]);
+    // El fetch inicial vive en una función anidada: así los setState quedan en
+    // un callback diferido y no en el cuerpo síncrono del efecto.
+    void (async () => {
+      await Promise.all([
+        load(),
+        equipmentService
+          .list({ ordering: "name" })
+          .then(setEquipment)
+          .catch(() => null),
+        schedulingService
+          .list({ is_completed: false, ordering: "scheduled_date" })
+          .then(setPendingSchedules)
+          .catch(() => null),
+      ]);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

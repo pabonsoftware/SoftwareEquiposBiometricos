@@ -8,8 +8,9 @@ from .views import (
     EquipmentWorkOrderViewSet,
     WorkOrderCostViewSet,
     WorkOrderEvidenceViewSet,
+    WorkOrderMeasurementViewSet,
     WorkOrderSignatureViewSet,
-    WorkOrderSparePartViewSet
+    WorkOrderSparePartViewSet,
 )
 
 app_name = "equipment"
@@ -20,7 +21,8 @@ router.register(r"certificates",EquipmentCertificateViewSet,basename="equipment-
 router.register(r"instructions",EquipmentInstructionViewSet,basename="equipment-instruction")
 router.register(r"work-orders",EquipmentWorkOrderViewSet,basename="equipment-work-order")
 router.register(r"work-order-spare-parts",WorkOrderSparePartViewSet,basename="work-order-spare-part")
-router.register(r"work-order-evidences",WorkOrderEvidenceViewSet,basename="work-order-measurement")
+router.register(r"work-order-measurements",WorkOrderMeasurementViewSet,basename="work-order-measurement")
+router.register(r"work-order-evidences",WorkOrderEvidenceViewSet,basename="work-order-evidence")
 router.register(r"work-order-signatures",WorkOrderSignatureViewSet,basename="work-order-signature")
 router.register(r"work-order-costs",WorkOrderCostViewSet,basename="work-order-cost")
 router.register(r"",EquipmentViewSet,basename="equipment")

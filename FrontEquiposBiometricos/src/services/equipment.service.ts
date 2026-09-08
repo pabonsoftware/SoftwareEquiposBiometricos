@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 import type { Paginated } from "@/types/api";
-import type { Equipment, EquipmentInput } from "@/types/equipment";
+import type { Equipment, EquipmentInput, EquipmentQr } from "@/types/equipment";
 
 export interface EquipmentListParams {
   ordering?: string;
@@ -66,6 +66,17 @@ export const equipmentService = {
   },
   async regenerateQr(id: number) {
     const res = await api.post<Equipment>(`/equipment/${id}/regenerate-qr/`);
+    return res.data;
+  },
+  /**
+   * Galería de códigos QR. El tamaño de página lo fija el backend
+   * (`QrCodePagination`: máx. 20, no configurable); la respuesta trae
+   * `page_size` para que la UI no lo asuma.
+   */
+  async qrCodes(params: { search?: string; branch?: number; page?: number } = {}) {
+    const res = await api.get<Paginated<EquipmentQr>>("/equipment/qr-codes/", {
+      params,
+    });
     return res.data;
   },
 };

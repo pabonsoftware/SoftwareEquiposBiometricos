@@ -1,3 +1,5 @@
+from typing import cast
+
 from django.conf import settings
 from django.middleware.csrf import get_token
 from rest_framework.response import Response
@@ -9,6 +11,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from api.v1.common.authentication import enforce_csrf
+from api.v1.users.serializers import (
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+)
 
 
 def _cookie_kwargs(max_age: int) -> dict:
@@ -62,7 +68,14 @@ class CookieTokenObtainPairView(ThrottledTokenObtainPairView):
 
     def finalize_response(self, request, response, *args, **kwargs):
         response = super().finalize_response(request, response, *args, **kwargs)
-        if response.status_code == 200 and isinstance(response.data, dict):
+        # super() está tipado como HttpResponseBase (base de Django), pero para
+        # esta vista DRF siempre renderiza un Response con .data. La guarda
+        # isinstance estrecha el tipo y además es inofensiva en runtime.
+        if (
+            isinstance(response, Response)
+            and response.status_code == 200
+            and isinstance(response.data, dict)
+        ):
             access = response.data.pop("access", None)
             refresh = response.data.pop("refresh", None)
             _set_auth_cookies(response, access=access, refresh=refresh)
@@ -101,7 +114,9 @@ class CookieTokenRefreshView(APIView):
             _delete_auth_cookies(response)
             return response
 
-        data = serializer.validated_data
+        # Tras is_valid(raise_exception=True), validated_data es un dict; el
+        # tipo que expone DRF (empty | None) es un falso positivo.
+        data = cast("dict[str, str]", serializer.validated_data)
         response = Response({})
         _set_auth_cookies(response, access=data.get("access"), refresh=data.get("refresh"))
         return response
@@ -132,3 +147,46 @@ class CookieTokenLogoutView(APIView):
         response = Response(status=204)
         _delete_auth_cookies(response)
         return response
+
+
+class PasswordResetRequestView(APIView):
+    """Paso 1 del flujo "olvidé mi contraseña": recibe un correo y, si hay un
+    usuario activo con ese correo, le envía un enlace de restablecimiento.
+
+    Responde siempre 200 con el mismo mensaje genérico, exista o no el correo,
+    para no filtrar qué cuentas están registradas. Rate-limited (scope
+    "login") para evitar abuso / enumeración."""
+
+    permission_classes = ()
+    authentication_classes = ()
+    throttle_classes = (ScopedRateThrottle,)
+    throttle_scope = "login"
+
+    def post(self, request, *args, **kwargs):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {
+                "detail": (
+                    "Si el correo corresponde a una cuenta activa, te enviamos "
+                    "un enlace para restablecer la contraseña."
+                )
+            }
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    """Paso 2: recibe `uid` + `token` (del enlace del correo) y la nueva
+    contraseña. Valida el token y actualiza la contraseña."""
+
+    permission_classes = ()
+    authentication_classes = ()
+
+    def post(self, request, *args, **kwargs):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {"detail": "Tu contraseña fue actualizada. Ya puedes iniciar sesión."}
+        )

@@ -4,8 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from api.v1.common.file_validation import DOCUMENT_EXTENSIONS, validate_uploaded_file
-from apps.maintenance.models import MaintenanceRecord,EquipmentMaintenanceSchedule
-from apps.maintenance.services import calculate_schedule_status
+from apps.maintenance.models import MaintenanceRecord
 from apps.scheduling.models import MaintenanceSchedule
 
 from apps.users.models import User
@@ -53,6 +52,16 @@ class MaintenanceRecordSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
         validators=[],
+    )
+    # Se declaran explícitamente (queryset completo) para que la validación de
+    # rol/actividad la hagan `validate_assigned_*` con mensajes en español, en
+    # lugar del "clave primaria inválida" genérico que produciría el
+    # `limit_choices_to` del modelo al filtrar el queryset del campo.
+    assigned_engineer = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+    assigned_technician = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
     )
     # Representación anidada (read-only) + campo plano para escribir.
     assigned_engineer_detail = _AssignedUserSerializer(
@@ -146,9 +155,9 @@ class MaintenanceRecordSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 _("El usuario asignado no está activo.")
             )
-        if value.role != User.Role.TECNICO:
+        if value.role != User.Role.INGENIERO:
             raise serializers.ValidationError(
-                _("El usuario asignado debe tener el rol de técnico.")
+                _("El responsable de ejecución debe tener el rol de ingeniero biomédico.")
             )
         return value
 
@@ -201,12 +210,19 @@ class MaintenanceRecordSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        schedule = validated_data.get("scheduled maintenance")
+        schedule = validated_data.get("scheduled_maintenance")
         if schedule is not None:
-            # Bloque la fila: si dos request concurrentes apuntan al mismo
-            # agendamiento, la segunda espera a que la primera confirme y 
+            # Bloquea la fila: si dos request concurrentes apuntan al mismo
+            # agendamiento, la segunda espera a que la primera confirme y
             # vuelve a ver is_completed=True antes de insertar.
-            schedule = MaintenanceSchedule.objects.select_for_update().get(pk=schedule.pk)
+            # `select_related(None)` limpia el select_related del manager (que
+            # trae FKs anulables): FOR UPDATE no admite el lado nulable de un
+            # outer join en Postgres.
+            schedule = (
+                MaintenanceSchedule.objects.select_related(None)
+                .select_for_update()
+                .get(pk=schedule.pk)
+            )
             if schedule.is_completed:
                 raise serializers.ValidationError(
                     {"scheduled_maintenance":_("El agendamiento ya fue cumplido.")}
@@ -239,7 +255,11 @@ class MaintenanceRecordSerializer(serializers.ModelSerializer):
             new_schedule not in (serializers.empty,None)
             and previous_schedule_id is None
         ):
-            new_schedule = MaintenanceSchedule.objects.select_for_update().get(pk=new_schedule.pk)
+            new_schedule = (
+                MaintenanceSchedule.objects.select_related(None)
+                .select_for_update()
+                .get(pk=new_schedule.pk)
+            )
             if new_schedule.is_completed:
                 raise serializers.ValidationError(
                     {"scheduled_maintenance":_("El agendamiento ya fue cumplido.")}
@@ -262,46 +282,3 @@ class MaintenanceRecordSerializer(serializers.ModelSerializer):
         return instance
 
 
-class EquipmentMaintenanceScheduleSerializer(serializers.ModelSerializer):
-
-    equipment_name = serializers.CharField(
-        source="equipment.name",
-        read_only=True,
-    )
-
-    equipment_asset_tag = serializers.CharField(
-        source="equipment.asset_tag",
-        read_only=True,
-    )
-
-    schedule_status = serializers.SerializerMethodField()
-
-    class Meta:
-
-        model = EquipmentMaintenanceSchedule
-
-        fields = [
-            "id",
-            "equipment",
-            "equipment.asset_tag",
-            "schedule_type",
-            "frequency_months",
-            "last_execution_date",
-            "next_execution_date",
-            "schedule_status",
-            "status",
-            "observations",
-            "created_at",
-            "updated_at"
-        ]
-
-        read_only_fields = [
-            "last_execution_date",
-            "next_execution_date",
-            "schedule_status",
-        ]
-
-    def get_schedule_status(self,obj):
-        return calculate_schedule_status(
-            obj.next_execution_date
-        )

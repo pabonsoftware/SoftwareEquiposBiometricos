@@ -11,12 +11,17 @@ dist/
 *.egg-info/
 *.egg
 
+
+.vscode/
+
 # Virtual environments
 .venv/
 venv/
 env/
 ENV/
 biometricapi_env/
+
+
 
 # Django
 *.log
@@ -71,3 +76,13 @@ docker-compose.override.yml
 skills-lock.json
 
 *.md
+
+# Carga masiva de equipos (management/commands/import_equipment.py):
+# los CSV que se arrastran a la carpeta y los resultados no se versionan,
+# pero sí la plantilla, el README y el propio comando.
+/imports/equipment/*.csv
+!/imports/equipment/plantilla_equipos.csv
+!/imports/equipment/README.md
+/imports/equipment/processed/
+/imports/equipment/failed/
+*.errores.txt

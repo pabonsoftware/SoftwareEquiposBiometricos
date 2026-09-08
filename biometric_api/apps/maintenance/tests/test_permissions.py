@@ -19,10 +19,10 @@ class TestMaintenanceRecordDeletePermissions:
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_admin_delete_leaves_audit_log(self, auth_client, maintenance_record, admin_user):
+    def test_admin_delete_leaves_audit_log(self, management_client, maintenance_record, admin_user):
         record_id = maintenance_record.id
 
-        response = auth_client.delete(detail_url(record_id))
+        response = management_client.delete(detail_url(record_id))
 
         assert response.status_code == status.HTTP_204_NO_CONTENT
         log = AuditLog.objects.get(

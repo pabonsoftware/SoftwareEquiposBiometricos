@@ -11,7 +11,7 @@ from apps.users.models import User
 from apps.users.tests.factories import (
     CoordinadorFactory,
     IngenieroFactory,
-    TecnicoFactory,
+    UsuarioFactory,
 )
 
 from .factories import MaintenanceScheduleFactory
@@ -57,7 +57,8 @@ class TestScheduleAssignmentCreate:
         assert body["assigned_technician"] == tecnico.id
         assert body["assigned_engineer_detail"]["id"] == ingeniero.id
         assert body["assigned_engineer_detail"]["role"] == User.Role.INGENIERO
-        assert body["assigned_technician_detail"]["role"] == User.Role.TECNICO
+        # Los dos cupos requieren rol de ingeniero biomédico (modelo de 4 roles).
+        assert body["assigned_technician_detail"]["role"] == User.Role.INGENIERO
 
     def test_create_without_assignment_keeps_fields_null(self, auth_client, equipment):
         response = auth_client.post(LIST_URL, _payload(equipment), format="json")
@@ -69,12 +70,11 @@ class TestScheduleAssignmentCreate:
         assert body["assigned_engineer_detail"] is None
         assert body["assigned_technician_detail"] is None
 
-    def test_create_engineer_with_wrong_role_returns_400(
-        self, auth_client, equipment, tecnico
-    ):
+    def test_create_engineer_with_wrong_role_returns_400(self, auth_client, equipment):
+        operativo = UsuarioFactory()
         response = auth_client.post(
             LIST_URL,
-            _payload(equipment, assigned_engineer=tecnico.id),
+            _payload(equipment, assigned_engineer=operativo.id),
             format="json",
         )
 
@@ -85,19 +85,18 @@ class TestScheduleAssignmentCreate:
             in body["assigned_engineer"][0]
         )
 
-    def test_create_technician_with_wrong_role_returns_400(
-        self, auth_client, equipment, ingeniero
-    ):
+    def test_create_technician_with_wrong_role_returns_400(self, auth_client, equipment):
+        operativo = UsuarioFactory()
         response = auth_client.post(
             LIST_URL,
-            _payload(equipment, assigned_technician=ingeniero.id),
+            _payload(equipment, assigned_technician=operativo.id),
             format="json",
         )
 
         assert response.status_code == 400
         body = response.json()
         assert (
-            "El usuario asignado debe tener el rol de técnico."
+            "El responsable de ejecución debe tener el rol de ingeniero biomédico."
             in body["assigned_technician"][0]
         )
 

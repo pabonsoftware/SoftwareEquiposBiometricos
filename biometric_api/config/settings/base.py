@@ -3,6 +3,7 @@ Configuración base de Django.
 
 Las settings específicas de cada entorno (dev/prod) heredan de este archivo.
 """
+import logging
 from datetime import timedelta
 from pathlib import Path
 
@@ -133,6 +134,26 @@ DATABASES = {
         "PORT": env("POSTGRES_PORT", default="5432"),
     }
 }
+
+# ----------------------------------------------------------------------------
+# Email
+# ----------------------------------------------------------------------------
+# Nota: el 2º argumento posicional de `env(...)` es `cast`, no `default`.
+# El valor por defecto SIEMPRE va como keyword `default=`.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=1025)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env("EMAIL_USE_TLS")  # scheme: (bool, True)
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL",
+    default="Biometric API pabonsoftware2026@gmail.com",
+)
+
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -282,37 +303,40 @@ CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 # corriendo y visite esa página — sin ganar nada a cambio, porque nada del
 # flujo real depende de eso.
 
-# ---------------------------------------------------------------------------
-# AWS S3 (django-storages)
-# ---------------------------------------------------------------------------
-AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
-AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
-AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
-AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="us-east-1")
-AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN", default="") or None
-AWS_QUERYSTRING_AUTH = env("AWS_QUERYSTRING_AUTH")
-AWS_DEFAULT_ACL = None  # Buckets modernos: ACLs deshabilitadas, se usan policies
 
-# Storage backend solo si hay credenciales configuradas (default a local en dev sin S3)
-if AWS_ACCESS_KEY_ID and AWS_STORAGE_BUCKET_NAME:
-    STORAGES = {
-        "default": {"BACKEND": "storages.backends.s3.S3Storage"},
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
-        },
-    }
-else:
-    STORAGES = {
-        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
-        },
-    }
+# (Opcional si pasa a producción)
+# # ---------------------------------------------------------------------------
+# # AWS S3 (django-storages)
+# # ---------------------------------------------------------------------------
+# AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
+# AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+# AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
+# AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="us-east-1")
+# AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN", default="") or None
+# AWS_QUERYSTRING_AUTH = env("AWS_QUERYSTRING_AUTH")
+# AWS_DEFAULT_ACL = None  # Buckets modernos: ACLs deshabilitadas, se usan policies
 
-# ---------------------------------------------------------------------------
-# Frontend (para los enlaces que apuntan los QR)
-# ---------------------------------------------------------------------------
-FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")
+# # Storage backend solo si hay credenciales configuradas (default a local en dev sin S3)
+# if AWS_ACCESS_KEY_ID and AWS_STORAGE_BUCKET_NAME:
+#     STORAGES = {
+#         "default": {"BACKEND": "storages.backends.s3.S3Storage"},
+#         "staticfiles": {
+#             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+#         },
+#     }
+# else:
+#     STORAGES = {
+#         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+#         "staticfiles": {
+#             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+#         },
+#     }
+
+
+# ===========================================================================
+# FRONTEND URL
+# ===========================================================================
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://127.0.0.1:5173")
 
 # ---------------------------------------------------------------------------
 # Email
@@ -401,7 +425,7 @@ if SENTRY_DSN:
         environment=env("SENTRY_ENVIRONMENT", default="production"),
         integrations=[
             DjangoIntegration(),
-            LoggingIntegration(level=None, event_level="ERROR"),
+            LoggingIntegration(level=None, event_level=logging.ERROR),
         ],
         traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.1),
         send_default_pii=False,

@@ -4,7 +4,7 @@ from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from api.v1.common.permissions import RestrictDeleteToManagement
+from api.v1.common.permissions import AdminPermissions
 from apps.branches.models import Branch
 
 from .filters import BranchFilter
@@ -16,7 +16,7 @@ class BranchViewSet(viewsets.ModelViewSet):
 
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer
-    permission_classes = (IsAuthenticated, RestrictDeleteToManagement)
+    permission_classes = (IsAuthenticated, AdminPermissions)
     filterset_class = BranchFilter
     search_fields = ("name", "address")
     ordering_fields = ("name", "city", "created_at")

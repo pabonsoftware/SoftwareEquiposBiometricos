@@ -133,7 +133,16 @@ api.interceptors.response.use(
 
     if (!refreshed) {
       userCache.clear();
-      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      // Solo forzamos ir a /login si el 401 ocurre DENTRO del panel (rutas
+      // protegidas). En páginas públicas —login, recuperar/restablecer
+      // contraseña, home, 404— el 401 de `/users/me/` es esperado (no hay
+      // sesión) y no debe sacar al usuario del flujo en el que está
+      // (p. ej. abriendo el enlace de recuperación del correo).
+      const path =
+        typeof window !== "undefined" ? window.location.pathname : "";
+      const inProtectedArea =
+        path.startsWith("/admin") || path.startsWith("/tecnico");
+      if (inProtectedArea) {
         window.location.assign("/login");
       }
       return Promise.reject(error);

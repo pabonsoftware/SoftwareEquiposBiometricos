@@ -27,6 +27,14 @@ services:
         REQUIREMENTS: prod
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
+      # --- Solo para probar la imagen de producción en LOCAL, entrando por el
+      # proxy HTTP de Vite (http://127.0.0.1:5173) en vez de por nginx+TLS ---
+      # Descomenta estas dos líneas: sin ellas el backend redirige a https y
+      # manda el header HSTS, y el navegador queda pegado a "127.0.0.1 = solo
+      # HTTPS" durante 30 días → ERR_SSL_PROTOCOL_ERROR contra el dev server de
+      # Vite. En el deploy real NO se ponen (defaults endurecidos en prod.py).
+      # DJANGO_SECURE_SSL_REDIRECT: "False"
+      # DJANGO_SECURE_HSTS_SECONDS: "0"
     command: null
 
   celery_worker:

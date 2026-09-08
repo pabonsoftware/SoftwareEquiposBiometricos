@@ -1,4 +1,10 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -10,16 +16,28 @@ import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { RegistroPage } from "@/pages/RegistroPage";
 import { RecuperarPasswordPage } from "@/pages/RecuperarPasswordPage";
+import { RestablecerPasswordPage } from "@/pages/RestablecerPasswordPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { DashboardPage } from "@/pages/admin/DashboardPage";
 import { SedesPage } from "@/pages/admin/SedesPage";
 import { EquiposPage } from "@/pages/admin/EquiposPage";
 import { EquipoDetallePage } from "@/pages/admin/EquipoDetallePage";
+import { CodigosQrPage } from "@/pages/admin/CodigosQrPage";
 import { UsuariosPage } from "@/pages/admin/UsuariosPage";
 import { MantenimientosPage } from "@/pages/admin/MantenimientosPage";
+import { OrdenesTrabajoPage } from "@/pages/admin/OrdenesTrabajoPage";
 import { AgendamientosPage } from "@/pages/admin/AgendamientosPage";
 import { FallasPage } from "@/pages/admin/FallasPage";
 import { PerfilPage } from "@/pages/admin/PerfilPage";
+
+/**
+ * `/restablecer-account` es un alias histórico de `/restablecer-password`.
+ * Se conserva el `?uid=&token=` del enlace del correo al redirigir.
+ */
+function RestablecerAccountRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: "/restablecer-password", search }} replace />;
+}
 
 function App() {
   return (
@@ -47,6 +65,21 @@ function App() {
                 path="/recuperar-password"
                 element={<RecuperarPasswordPage />}
               />
+              <Route
+                path="/restablecer-password"
+                element={<RestablecerPasswordPage />}
+              />
+              {/* Alias históricos: "recuperación de cuenta" es el mismo flujo
+                  que "recuperación de contraseña" (HU026/HU027). Se mantienen
+                  como redirección para no romper enlaces antiguos. */}
+              <Route
+                path="/recuperar-account"
+                element={<Navigate to="/recuperar-password" replace />}
+              />
+              <Route
+                path="/restablecer-account"
+                element={<RestablecerAccountRedirect />}
+              />
 
               {/* Layout público — incluye también la 404 para que el header
                   permita volver al inicio o al panel desde cualquier URL rota. */}
@@ -60,17 +93,31 @@ function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/admin" element={<AdminLayout />}>
                   <Route index element={<DashboardPage />} />
-                  <Route path="sedes" element={<SedesPage />} />
-                  <Route path="equipos" element={<EquiposPage />} />
-                  <Route path="equipos/:id" element={<EquipoDetallePage />} />
-                  <Route path="mantenimientos" element={<MantenimientosPage />} />
-                  <Route path="agendamientos" element={<AgendamientosPage />} />
-                  <Route path="fallas" element={<FallasPage />} />
                   <Route path="perfil" element={<PerfilPage />} />
 
-                  <Route
-                    element={<ProtectedRoute roles={["superadmin", "admin"]} />}
-                  >
+                  {/* Cada módulo se guarda con el mismo permiso `view` que
+                      decide su visibilidad en el menú (ver lib/permissions). */}
+                  <Route element={<ProtectedRoute resource="branches" />}>
+                    <Route path="sedes" element={<SedesPage />} />
+                  </Route>
+                  <Route element={<ProtectedRoute resource="equipment" />}>
+                    <Route path="equipos" element={<EquiposPage />} />
+                    <Route path="equipos/qr" element={<CodigosQrPage />} />
+                    <Route path="equipos/:id" element={<EquipoDetallePage />} />
+                  </Route>
+                  <Route element={<ProtectedRoute resource="maintenance" />}>
+                    <Route path="mantenimientos" element={<MantenimientosPage />} />
+                  </Route>
+                  <Route element={<ProtectedRoute resource="work_orders" />}>
+                    <Route path="ordenes-trabajo" element={<OrdenesTrabajoPage />} />
+                  </Route>
+                  <Route element={<ProtectedRoute resource="scheduling" />}>
+                    <Route path="agendamientos" element={<AgendamientosPage />} />
+                  </Route>
+                  <Route element={<ProtectedRoute resource="failures" />}>
+                    <Route path="fallas" element={<FallasPage />} />
+                  </Route>
+                  <Route element={<ProtectedRoute roles={["admin"]} />}>
                     <Route path="usuarios" element={<UsuariosPage />} />
                   </Route>
                 </Route>

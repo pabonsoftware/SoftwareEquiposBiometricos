@@ -13,17 +13,19 @@ pytestmark = pytest.mark.django_db
 
 
 def _make_failure(equipment, *, reported_at, resolved_at=None):
-    """Crea una falla forzando timestamps específicos (bypassea default=now)."""
-    failure = FailureRecordFactory(
+    """Crea una falla forzando timestamps específicos (bypassea default=now).
+
+    `reported_at` se pasa directo a la fábrica: el check constraint
+    ``failure_resolved_at_after_reported_at`` se evalúa en el INSERT, así que
+    no sirve fijarlo con un UPDATE posterior.
+    """
+    return FailureRecordFactory(
         equipment=equipment,
         severity=FailureSeverity.HIGH,
+        reported_at=reported_at,
         resolved=resolved_at is not None,
         resolved_at=resolved_at,
     )
-    # reported_at tiene default=timezone.now; sobrescribir explícitamente.
-    failure.reported_at = reported_at
-    failure.save(update_fields=["reported_at"])
-    return failure
 
 
 class TestComputeMetrics:

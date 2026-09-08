@@ -33,6 +33,15 @@ class _MaintenanceRecordMiniSerializer(serializers.ModelSerializer):
 class MaintenanceScheduleSerializer(serializers.ModelSerializer):
     equipment_asset_tag = serializers.CharField(source="equipment.asset_tag", read_only=True)
     branch_name = serializers.CharField(source="equipment.branch.name", read_only=True)
+    # Queryset completo (sin el `limit_choices_to` del modelo) para que la
+    # validación de rol/actividad la hagan `validate_assigned_*` con mensajes
+    # en español en vez del "clave primaria inválida" genérico.
+    assigned_engineer = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+    assigned_technician = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
     assigned_engineer_detail = _AssignedUserSerializer(
         source="assigned_engineer", read_only=True
     )
@@ -128,8 +137,8 @@ class MaintenanceScheduleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 _("El usuario asignado no está activo.")
             )
-        if value.role != User.Role.TECNICO:
+        if value.role != User.Role.INGENIERO:
             raise serializers.ValidationError(
-                _("El usuario asignado debe tener el rol de técnico.")
+                _("El responsable de ejecución debe tener el rol de ingeniero biomédico.")
             )
         return value

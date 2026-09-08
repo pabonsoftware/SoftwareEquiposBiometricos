@@ -1,4 +1,5 @@
-export type Rol = "superadmin" | "admin" | "coordinador" | "ingeniero" | "tecnico";
+// 4.1. Roles del sistema — 4 roles.
+export type Rol = "admin" | "coordinador" | "ingeniero" | "usuario";
 
 export interface Usuario {
   id: number;

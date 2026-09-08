@@ -32,7 +32,16 @@ def admin_user(db):
 
 
 @pytest.fixture
-def auth_client(api_client, admin_user):
+def auth_client(api_client, tecnico):
+    """Cliente autenticado como Técnico Biomédico: es el rol que documenta las
+    intervenciones de mantenimiento (crear/editar registros)."""
+    api_client.force_authenticate(user=tecnico)
+    return api_client
+
+
+@pytest.fixture
+def management_client(api_client, admin_user):
+    """Cliente con autoridad administrativa (admin): puede eliminar registros."""
     api_client.force_authenticate(user=admin_user)
     return api_client
 

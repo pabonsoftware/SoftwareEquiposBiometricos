@@ -3,8 +3,10 @@ import {
   AlertTriangle,
   Building2,
   CalendarClock,
+  ClipboardCheck,
   ClipboardList,
   LayoutDashboard,
+  QrCode,
   User,
   Users,
   Wrench,
@@ -13,7 +15,7 @@ import {
 import type { ComponentType } from "react";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/context/AuthContext";
-import { can, type Resource } from "@/lib/permissions";
+import { can, type Action, type Resource } from "@/lib/permissions";
 import type { Rol } from "@/types/auth";
 
 interface SidebarProps {
@@ -27,13 +29,19 @@ interface LinkDef {
   icon: ComponentType<{ size?: number }>;
   end?: boolean;
   resource?: Resource;
+  /** Acción requerida sobre `resource` para ver el enlace. Por defecto "view". */
+  action?: Action;
 }
 
 const allLinks: LinkDef[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/sedes", label: "Sedes", icon: Building2, resource: "branches" },
-  { to: "/admin/equipos", label: "Equipos", icon: ClipboardList, resource: "equipment" },
+  { to: "/admin/equipos", label: "Equipos", icon: ClipboardList, resource: "equipment", end: true },
+  // Generar/imprimir etiquetas QR es tarea de quien gestiona el inventario
+  // (Admin) o la información técnica (Ingeniero): se pide `equipment.edit`.
+  { to: "/admin/equipos/qr", label: "Códigos QR", icon: QrCode, resource: "equipment", action: "edit" },
   { to: "/admin/mantenimientos", label: "Mantenimientos", icon: Wrench, resource: "maintenance" },
+  { to: "/admin/ordenes-trabajo", label: "Órdenes de trabajo", icon: ClipboardCheck, resource: "work_orders" },
   { to: "/admin/agendamientos", label: "Agendamientos", icon: CalendarClock, resource: "scheduling" },
   { to: "/admin/fallas", label: "Reportes de falla", icon: AlertTriangle, resource: "failures" },
   { to: "/admin/usuarios", label: "Usuarios", icon: Users, resource: "users" },
@@ -41,7 +49,9 @@ const allLinks: LinkDef[] = [
 ];
 
 function visibleLinks(role: Rol | undefined): LinkDef[] {
-  return allLinks.filter((l) => !l.resource || can(role, l.resource, "view"));
+  return allLinks.filter(
+    (l) => !l.resource || can(role, l.resource, l.action ?? "view"),
+  );
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {

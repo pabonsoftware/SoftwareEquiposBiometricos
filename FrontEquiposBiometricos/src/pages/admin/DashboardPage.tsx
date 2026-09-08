@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Children, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   Activity,
@@ -113,9 +113,9 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Carga única al montar. `loading` ya arranca en `true` y `error` en `null`,
+    // así que no hace falta setearlos aquí (evita setState síncrono en el efecto).
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     dashboardService
       .summary()
       .then((res) => {
@@ -191,7 +191,10 @@ export function DashboardPage() {
             canViewMaintenance={canViewMaintenance}
           />
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          {/* Cada bloque se pinta solo si el rol ve ese módulo en el menú.
+              Los grids de a dos colapsan a una sola columna cuando queda un
+              único bloque visible (p. ej. el Administrador). */}
+          <CardGrid>
             {canViewEquipment && (
               <EquipmentStatusChart
                 data={data.distributions.equipment_by_status}
@@ -202,7 +205,7 @@ export function DashboardPage() {
                 data={data.distributions.failures_by_severity}
               />
             )}
-          </div>
+          </CardGrid>
 
           {canViewMaintenance && (
             <MaintenanceTimeSeriesChart
@@ -210,16 +213,31 @@ export function DashboardPage() {
             />
           )}
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <CardGrid>
             {canViewScheduling && (
               <OverdueSchedulesList items={data.lists.overdue_schedules} />
             )}
             {canViewEquipment && (
               <WorstMtbfList items={data.lists.worst_mtbf} />
             )}
-          </div>
+          </CardGrid>
         </>
       ) : null}
+    </div>
+  );
+}
+
+/** Grid de tarjetas que usa 2 columnas solo si hay 2+ tarjetas visibles. */
+function CardGrid({ children }: { children: ReactNode }) {
+  const visible = Children.toArray(children).filter(Boolean);
+  if (visible.length === 0) return null;
+  return (
+    <div
+      className={
+        visible.length > 1 ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"
+      }
+    >
+      {visible}
     </div>
   );
 }
@@ -234,7 +252,7 @@ function MyTasksSection({
     <Card>
       <CardHeader
         title="Mis tareas próximas"
-        subtitle="Agendamientos asignados a ti en los próximos 7 días"
+        subtitle="Solicitudes asignadas a ti en los próximos 7 días"
       />
       <ul className="divide-y divide-[var(--border)]">
         {schedules.map((s) => (
@@ -309,18 +327,18 @@ function KpiRow({
       alert: failures.critical_open > 0,
     },
     {
-      label: "Próximos 7 días",
+      label: "Solicitudes · próximos 7 días",
       value: String(scheduling.next_7_days),
       delta:
         scheduling.overdue > 0
-          ? `${scheduling.overdue} vencidos sin cumplir`
-          : "Sin vencidos",
+          ? `${scheduling.overdue} vencidas sin atender`
+          : "Sin vencidas",
       Icon: CalendarClock,
       tone: "text-amber-600 bg-amber-50 dark:bg-amber-950/40",
       show: canViewScheduling,
     },
     {
-      label: "Mantenimientos del mes",
+      label: "Órdenes de trabajo del mes",
       value: String(maintenance.this_month_count),
       delta: `Costo: ${formatCost(maintenance.this_month_cost)}`,
       Icon: Wrench,
@@ -469,7 +487,7 @@ function MaintenanceTimeSeriesChart({
   return (
     <Card>
       <CardHeader
-        title="Mantenimientos últimos 6 meses"
+        title="Órdenes de trabajo últimos 6 meses"
         subtitle="Cantidad por tipo y costo total mensual"
       />
       <div className="h-72">
@@ -547,7 +565,7 @@ function OverdueSchedulesList({
   return (
     <Card>
       <CardHeader
-        title="Agendamientos vencidos"
+        title="Solicitudes vencidas"
         subtitle="Pendientes cuya fecha ya pasó"
         action={
           items.length > 0 ? (
@@ -566,7 +584,7 @@ function OverdueSchedulesList({
             size={24}
             className="mx-auto mb-2 text-emerald-500"
           />
-          No hay agendamientos vencidos.
+          No hay solicitudes vencidas.
         </div>
       ) : (
         <ul className="divide-y divide-[var(--border)]">

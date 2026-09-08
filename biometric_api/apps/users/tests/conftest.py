@@ -11,6 +11,13 @@ from .factories import (
 )
 
 
+@pytest.fixture(autouse=True)
+def locmem_email(settings):
+    """Correo en memoria: los tests no dependen de un SMTP real (mailpit) y
+    pueden inspeccionar `django.core.mail.outbox`."""
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+
 @pytest.fixture
 def api_client():
     return APIClient()

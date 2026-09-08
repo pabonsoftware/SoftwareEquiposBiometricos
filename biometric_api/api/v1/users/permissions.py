@@ -5,17 +5,13 @@ from apps.users.models import User
 
 
 class IsAdminRole(permissions.BasePermission):
-    """Permite el acceso a usuarios con rol superadmin o admin."""
+    """Permite el acceso a usuarios con rol de Administrador del Sistema."""
 
     message = _("No tienes permisos para esta acción.")
 
     def has_permission(self, request, view) -> bool:
         u = request.user
-        return bool(
-            u
-            and u.is_authenticated
-            and u.role in {User.Role.SUPERADMIN, User.Role.ADMIN}
-        )
+        return bool(u and u.is_authenticated and u.role == User.Role.ADMIN)
 
     def has_object_permission(self, request, view, obj) -> bool:
         return self.has_permission(request, view)

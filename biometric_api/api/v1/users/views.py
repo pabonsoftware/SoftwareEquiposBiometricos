@@ -50,41 +50,18 @@ class UserViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAuthenticated(), IsAdminRole()]
 
-    def _is_superadmin(self, user):
-        return getattr(user,"role",None) == User.Role.SUPERADMIN
-    
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
         is_admin = IsAdminRole().has_permission(request, self)
         is_self = obj.pk == request.user.pk
-        is_superadmin_caller = self._is_superadmin(request.user)
-        target_is_superadmin = obj.role == User.Role.SUPERADMIN
 
         if self.action in ("retrieve", "set_password"):
             if not (is_admin or is_self):
                 self.permission_denied(request, message=_("No tienes permisos para esta acción."))
 
-            if (
-                self.action == "set_password"
-                and not is_self
-                and target_is_superadmin
-                and not is_superadmin_caller
-            ):
-                self.permission_denied(
-                    request,
-                    message=_(
-                        "Solo un superadministrador puede cambiar la contraseña de otro superadministrador."
-                    )
-                )
-
         if self.action in ("update", "partial_update"):
             if not (is_admin or is_self):
                 self.permission_denied(request, message=_("No tienes permisos para esta acción."))
-            if not is_self and target_is_superadmin and not is_superadmin_caller:
-                self.permission_denied(
-                    request,
-                    message=_("Solo un superadministrador puee modificar a otro superadministrador."),
-                )
             if is_self and not is_admin:
                 forbidden = {"role", "is_active", "is_staff", "is_superuser"}
                 touched = forbidden.intersection(request.data.keys())
@@ -112,10 +89,6 @@ class UserViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         if instance.pk == self.request.user.pk:
             raise SelfDeleteConflict()
-        if instance.role == User.Role.SUPERADMIN and not self._is_superadmin(self.request.user):
-            raise PermissionDenied(
-                _("Solo un superadministrador puede eliminar a otro superadministrador.")
-            )
         log_audit_event(self.request.user, AuditAction.DELETE, instance, request=self.request)
         instance.delete()
 
@@ -131,8 +104,8 @@ class UserViewSet(viewsets.ModelViewSet):
             context={"request": request, "target_user": user},
         )
         serializer.is_valid(raise_exception=True)
-        user.set_password(serializer.validated_data["new_password"])
-        user.save(update_fields=["password"])
+        # `save()` persiste la nueva contraseña y envía el correo de aviso.
+        serializer.save()
         log_audit_event(
             request.user, AuditAction.UPDATE, user,
             request=request, changes={"password": "changed"},

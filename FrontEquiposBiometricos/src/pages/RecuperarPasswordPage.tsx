@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { authService } from "@/services/auth.service";
+import { getApiErrorMessage } from "@/lib/api";
 
 export function RecuperarPasswordPage() {
   const [correo, setCorreo] = useState("");
@@ -20,10 +22,14 @@ export function RecuperarPasswordPage() {
       return;
     }
     setLoading(true);
-    // MOCK: cuando exista backend → api.post("/auth/recuperar", { correo })
-    await new Promise((r) => setTimeout(r, 800));
-    setLoading(false);
-    setSent(true);
+    try {
+      await authService.requestPasswordReset(correo);
+      setSent(true);
+    } catch (err) {
+      setError(getApiErrorMessage(err, "No se pudo enviar el correo. Inténtalo de nuevo."));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

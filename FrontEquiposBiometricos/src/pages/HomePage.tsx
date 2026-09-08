@@ -50,7 +50,7 @@ const modulos = [
   },
   {
     icon: Wrench,
-    title: "Mantenimientos",
+    title: "Solicitudes y órdenes de trabajo",
     desc: "Programación de preventivos, registro de correctivos y cronograma anual visible para todo el equipo técnico.",
   },
   {

@@ -14,8 +14,8 @@ const features = [
     desc: "Registro completo y actualizado de cada equipo biomédico.",
   },
   {
-    title: "Mantenimientos preventivos y correctivos",
-    desc: "Programa, ejecuta y documenta intervenciones técnicas.",
+    title: "Solicitudes y órdenes de trabajo",
+    desc: "Programa, ejecuta y documenta las intervenciones técnicas.",
   },
   {
     title: "Reportes y trazabilidad",

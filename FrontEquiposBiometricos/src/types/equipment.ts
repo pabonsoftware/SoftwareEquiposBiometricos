@@ -146,6 +146,17 @@ export interface Equipment {
   updated_at?: string;
 }
 
+/** Fila liviana del endpoint `/equipment/qr-codes/` (galería de códigos QR). */
+export interface EquipmentQr {
+  id: number;
+  asset_tag: string;
+  name: string;
+  brand_name: string | null;
+  equipment_model_name: string | null;
+  branch_name: string | null;
+  qr_code_url: string | null;
+}
+
 export interface EquipmentInput {
   name: string;
   asset_tag: string;

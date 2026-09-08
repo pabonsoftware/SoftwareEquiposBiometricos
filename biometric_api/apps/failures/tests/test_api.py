@@ -332,14 +332,18 @@ class TestFailureUpdate:
 
 
 class TestFailureDelete:
-    def test_delete(self, auth_client, failure):
-        response = auth_client.delete(detail_url(failure.id))
+    def test_delete(self, management_client, failure):
+        response = management_client.delete(detail_url(failure.id))
 
         assert response.status_code == 204
         assert not FailureRecord.objects.filter(id=failure.id).exists()
 
-    def test_delete_missing_returns_404(self, auth_client):
-        assert auth_client.delete(detail_url(99999)).status_code == 404
+    def test_delete_missing_returns_404(self, management_client):
+        assert management_client.delete(detail_url(99999)).status_code == 404
+
+    def test_delete_by_ingeniero_returns_403(self, auth_client, failure):
+        """`auth_client` es un ingeniero: evalúa el reporte pero no lo elimina."""
+        assert auth_client.delete(detail_url(failure.id)).status_code == 403
 
 
 class TestResolveAction:

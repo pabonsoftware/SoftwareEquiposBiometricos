@@ -1,9 +1,20 @@
 from django.conf import settings
+from django.http import HttpRequest, HttpResponseBase
 from rest_framework import exceptions
 from rest_framework.authentication import CSRFCheck
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS", "TRACE")
+
+
+def _unused_get_response(request: HttpRequest) -> HttpResponseBase:
+    """`get_response` ficticio para instanciar `CSRFCheck`.
+
+    `CSRFCheck` es un middleware y su firma exige un `get_response` que
+    devuelva una respuesta, pero aquí solo llamamos a `process_request` y
+    `process_view`, que nunca lo invocan. Nunca debería ejecutarse.
+    """
+    raise AssertionError("CSRFCheck.get_response no debería invocarse")  # pragma: no cover
 
 
 def enforce_csrf(request) -> None:
@@ -16,7 +27,7 @@ def enforce_csrf(request) -> None:
     `Authorization` (apps móviles, clientes API) no aplica: el atacante no
     puede forzar a un navegador a mandar ese header.
     """
-    check = CSRFCheck(lambda request: None)
+    check = CSRFCheck(_unused_get_response)
     check.process_request(request)
     reason = check.process_view(request, None, (), {})
     if reason:

@@ -20,4 +20,17 @@ export const authService = {
     // falle (p. ej. sin conexión).
     await api.post("/auth/token/cookie/logout/").catch(() => undefined);
   },
+
+  // --- Recuperación de contraseña ("olvidé mi contraseña") ---
+  async requestPasswordReset(email: string) {
+    // El backend responde 200 exista o no el correo (no filtra cuentas).
+    await api.post("/auth/password/reset/", { email });
+  },
+  async confirmPasswordReset(data: {
+    uid: string;
+    token: string;
+    new_password: string;
+  }) {
+    await api.post("/auth/password/reset/confirm/", data);
+  },
 };

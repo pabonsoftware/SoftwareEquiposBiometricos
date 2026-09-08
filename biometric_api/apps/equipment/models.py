@@ -1,3 +1,6 @@
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -5,6 +8,9 @@ from apps.branches.models import Branch
 
 from .managers import EquipmentManager
 
+if TYPE_CHECKING:
+    from apps.maintenance.models import MaintenanceRecord
+    from apps.users.models import User
 
 class EquipmentStatus(models.TextChoices):
     ACTIVE = "ACTIVE", _("Operativo")
@@ -371,7 +377,7 @@ class EquipmentWorkOrder(models.Model):
 
     description = models.TextField()
 
-    technician = models.ForeignKey(
+    technician: "models.ForeignKey[User | None]" = models.ForeignKey(
         "users.User",
         on_delete=models.SET_NULL,
         null=True,
@@ -387,6 +393,14 @@ class EquipmentWorkOrder(models.Model):
     report = models.FileField(
         upload_to="equipment/orders/",
         blank=True,
+    )
+
+    maintenance_record: "models.OneToOneField[MaintenanceRecord | None]" = models.OneToOneField(
+        "maintenance.MaintenanceRecord",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="work_order",
     )
 
     created_at = models.DateTimeField(
@@ -492,25 +506,25 @@ class WorkOrderCost(models.Model):
     labor_cost = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        default=0,
+        default=Decimal("0"),
     )
 
     spare_parts_cost = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        default=0,
+        default=Decimal("0"),
     )
 
     transport_cost = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        default=0,
+        default=Decimal("0"),
     )
 
     other_cost = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        default=0,
+        default=Decimal("0"),
     )
 
 
