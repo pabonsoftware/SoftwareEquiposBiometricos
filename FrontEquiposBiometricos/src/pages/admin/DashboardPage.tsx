@@ -451,7 +451,7 @@ function SemaphoreOverview({
     <Card>
       <CardHeader
         title="Semáforo de cumplimiento"
-        subtitle="🔴 vencido · 🟡 próximo a vencer · 🟢 al día (RF010)"
+        subtitle="🔴 vencido · 🟡 próximo a vencer · 🟢 al día"
       />
       <div className="flex flex-col divide-y divide-[var(--border)]">
         {rows.map((row) => (

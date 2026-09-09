@@ -81,7 +81,6 @@ const EVIDENCE_LABEL: Record<EvidenceType, string> = {
 };
 
 const SIGNATURE_LABEL: Record<SignatureRole, string> = {
-  TECHNICIAN: "Técnico",
   ENGINEER: "Ingeniero",
   CLIENT: "Cliente",
   SUPERVISOR: "Supervisor",
@@ -704,17 +703,6 @@ export function OrdenesTrabajoPage() {
             value={form.end_date ?? ""}
             onChange={(e) => setForm({ ...form, end_date: e.target.value })}
           />
-          <Select
-            label="Técnico responsable"
-            value={form.technician ? String(form.technician) : ""}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                technician: e.target.value ? Number(e.target.value) : null,
-              })
-            }
-            options={technicianOptions}
-          />
           {editing && (
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-app">Estado</span>
@@ -959,10 +947,6 @@ function WorkOrderDetailView({
         <div>
           <span className="text-app-muted">Cumplimiento: </span>
           <SemaphoreBadge payload={detail.semaphore} showDays />
-        </div>
-        <div>
-          <span className="text-app-muted">Técnico: </span>
-          {detail.technician_name ?? "Sin asignar"}
         </div>
         {detail.approved_by_name && (
           <div>

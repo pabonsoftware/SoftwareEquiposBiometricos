@@ -78,7 +78,7 @@ export function AuditoriaPage() {
           Auditoría
         </h1>
         <p className="text-sm text-app-muted">
-          Rastro de acciones sensibles: quién, cuándo, qué cambió (RFN009).
+          Rastro de acciones sensibles: quién, cuándo, qué cambió.
         </p>
       </div>
 

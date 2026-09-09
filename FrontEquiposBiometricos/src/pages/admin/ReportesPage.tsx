@@ -76,7 +76,7 @@ export function ReportesPage() {
       <div>
         <h1 className="text-2xl font-bold text-app sm:text-3xl">Reportes</h1>
         <p className="text-sm text-app-muted">
-          Reportes de gestión con filtros y descarga en CSV (RF012).
+          Reportes de gestión con filtros y descarga en CSV.
         </p>
       </div>
 

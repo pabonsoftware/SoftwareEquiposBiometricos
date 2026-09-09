@@ -22,7 +22,7 @@ export type EquipmentOperationalStatus =
 
 export type EvidenceType = "PHOTO" | "VIDEO" | "DOCUMENT" | "AUDIO"
 
-export type SignatureRole = "TECHNICIAN" | "ENGINEER" | "CLIENT" | "SUPERVISOR"
+export type SignatureRole =  "ENGINEER" | "CLIENT" | "SUPERVISOR"
 
 export interface WorkOrderSparePart {
     id:number;
