@@ -7,6 +7,9 @@ class AuditAction(models.TextChoices):
     CREATE = "create", _("Creación")
     UPDATE = "update", _("Actualización")
     DELETE = "delete", _("Eliminación")
+    APPROVE = "approve", _("Aprobación")
+    CLOSE = "close", _("Cierre")
+    CANCEL = "cancel", _("Cancelación")
 
 
 class AuditLog(models.Model):

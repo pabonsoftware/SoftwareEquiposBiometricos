@@ -1,3 +1,27 @@
+# Desarrollo con Docker. Arranque:
+#
+#   docker compose up --build
+#
+# En el primer arranque, `web` corre migraciones, crea un superusuario
+# (CREATE_SUPERUSER) e importa los CSV que haya en `imports/equipment/`
+# (AUTO_IMPORT_EQUIPMENT). Para volver a importar tras dejar un CSV nuevo:
+#
+#   docker compose run --rm importer
+#
+# El `.env` está pensado para correr Django en el host (POSTGRES_HOST=localhost);
+# dentro de los contenedores esos hostnames se sobreescriben abajo con el
+# ancla `x-django-env` (db / redis / mailpit).
+
+x-django-env: &django-env
+  # Sobreescribe los `*_HOST=localhost` del .env por los nombres de servicio.
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  EMAIL_HOST: mailpit
+  EMAIL_PORT: "1025"
+
 services:
   db:
     image: postgres:16-alpine
@@ -39,6 +63,16 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      <<: *django-env
+      RUN_MIGRATIONS: "true"
+      # Superusuario automático (dev). Cámbialo por variables reales en .env.
+      CREATE_SUPERUSER: "true"
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-pabonsoftware2026@gmail.com}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-Admin.2026}
+      # Importa los CSV de imports/equipment/ en cada arranque (idempotente).
+      AUTO_IMPORT_EQUIPMENT: "true"
     volumes:
       - .:/app
     ports:
@@ -50,6 +84,27 @@ services:
         condition: service_healthy
     command: python manage.py runserver 0.0.0.0:8000
 
+  # Carga masiva de equipos "a demanda": deja el CSV en imports/equipment/ y
+  #   docker compose run --rm importer
+  importer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        REQUIREMENTS: dev
+    profiles: ["import"]
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+      RUN_MIGRATIONS: "false"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python manage.py import_equipment --create-branch --update --partial --rows
+
   celery_worker:
     build:
       context: .
@@ -60,6 +115,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      <<: *django-env
+      RUN_MIGRATIONS: "false"
     volumes:
       - .:/app
     depends_on:
@@ -68,6 +126,29 @@ services:
       redis:
         condition: service_healthy
     command: celery -A config worker -l info
+
+  # Programador de tareas periódicas (barrido diario de alertas — HU011/HU015).
+  celery_beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        REQUIREMENTS: dev
+    container_name: biometric_celery_beat
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+      RUN_MIGRATIONS: "false"
+    volumes:
+      - .:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery_worker:
+        condition: service_started
+    command: celery -A config beat -l info
 
   # UI de monitoreo de Celery (workers, tasks, colas) — http://localhost:5555
   flower:
@@ -80,6 +161,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      <<: *django-env
+      RUN_MIGRATIONS: "false"
     volumes:
       - .:/app
     ports:

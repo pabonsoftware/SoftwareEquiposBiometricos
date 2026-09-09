@@ -1,12 +1,15 @@
 import { NavLink } from "react-router-dom";
 import {
   AlertTriangle,
+  BellRing,
   Building2,
   CalendarClock,
   ClipboardCheck,
   ClipboardList,
+  FileBarChart,
   LayoutDashboard,
   QrCode,
+  ShieldCheck,
   User,
   Users,
   Wrench,
@@ -43,7 +46,10 @@ const allLinks: LinkDef[] = [
   { to: "/admin/mantenimientos", label: "Mantenimientos", icon: Wrench, resource: "maintenance" },
   { to: "/admin/ordenes-trabajo", label: "Órdenes de trabajo", icon: ClipboardCheck, resource: "work_orders" },
   { to: "/admin/agendamientos", label: "Agendamientos", icon: CalendarClock, resource: "scheduling" },
+  { to: "/admin/alertas", label: "Alertas de mantenimiento", icon: BellRing, resource: "scheduling" },
   { to: "/admin/fallas", label: "Reportes de falla", icon: AlertTriangle, resource: "failures" },
+  { to: "/admin/reportes", label: "Reportes", icon: FileBarChart, resource: "reports" },
+  { to: "/admin/auditoria", label: "Auditoría", icon: ShieldCheck, resource: "audit" },
   { to: "/admin/usuarios", label: "Usuarios", icon: Users, resource: "users" },
   { to: "/admin/perfil", label: "Mi perfil", icon: User },
 ];

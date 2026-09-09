@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  BadgeCheck,
+  Ban,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   ListChecks,
   Pencil,
+  Play,
   Plus,
   Trash2,
   Wrench,
@@ -15,6 +18,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
+import { SemaphoreBadge } from "@/components/ui/SemaphoreBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/context/AuthContext";
 import { workOrdersService } from "@/services/workorders.service";
@@ -25,6 +29,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import type { Equipment } from "@/types/equipment";
 import type { Usuario } from "@/types/auth";
 import type {
+  EquipmentOperationalStatus,
   EvidenceType,
   SignatureRole,
   WorkOrder,
@@ -44,6 +49,7 @@ const TYPE_LABEL: Record<WorkOrderServiceType, string> = {
 
 const STATUS_LABEL: Record<WorkOrderStatus, string> = {
   PENDING: "Pendiente",
+  APPROVED: "Aprobada",
   IN_PROGRESS: "En proceso",
   FINISHED: "Terminada",
   CANCELLED: "Cancelada",
@@ -51,12 +57,20 @@ const STATUS_LABEL: Record<WorkOrderStatus, string> = {
 
 const STATUS_TONE: Record<
   WorkOrderStatus,
-  "neutral" | "info" | "success" | "danger"
+  "neutral" | "info" | "success" | "danger" | "warning"
 > = {
   PENDING: "neutral",
+  APPROVED: "warning",
   IN_PROGRESS: "info",
   FINISHED: "success",
   CANCELLED: "danger",
+};
+
+const EQUIPMENT_STATUS_LABEL: Record<EquipmentOperationalStatus, string> = {
+  ACTIVE: "Operativo",
+  INACTIVE: "Fuera de servicio",
+  IN_MAINTENANCE: "En mantenimiento",
+  IN_REPAIR: "En reparación",
 };
 
 const EVIDENCE_LABEL: Record<EvidenceType, string> = {
@@ -84,7 +98,6 @@ const emptyForm: WorkOrderInput = {
   end_date: "",
   description: "",
   technician: null,
-  status: "PENDING",
 };
 
 export function OrdenesTrabajoPage() {
@@ -93,6 +106,9 @@ export function OrdenesTrabajoPage() {
   const canCreate = can(role, "work_orders", "create");
   const canEdit = can(role, "work_orders", "edit");
   const canDelete = can(role, "work_orders", "delete");
+  // Aprobar / cancelar / cerrar formalmente: Coordinador (4.1.2). El backend
+  // lo vuelve a validar — ocultar el botón no es la única protección.
+  const canApprove = can(role, "work_orders", "approve");
 
   const [items, setItems] = useState<WorkOrder[]>([]);
   const [count, setCount] = useState(0);
@@ -120,7 +136,16 @@ export function OrdenesTrabajoPage() {
   // registro en la hoja de vida del equipo.
   const [completing, setCompleting] = useState<WorkOrder | null>(null);
   const [completeObs, setCompleteObs] = useState("");
+  const [completeError, setCompleteError] = useState<string | null>(null);
   const [completeSaving, setCompleteSaving] = useState(false);
+
+  const [cancelling, setCancelling] = useState<WorkOrder | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelSaving, setCancelSaving] = useState(false);
+
+  // Acción de la máquina de estados en curso (id de la orden) para deshabilitar
+  // los botones mientras el POST está en vuelo.
+  const [transitioning, setTransitioning] = useState<number | null>(null);
 
   const [detail, setDetail] = useState<WorkOrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -212,7 +237,6 @@ export function OrdenesTrabajoPage() {
       end_date: w.end_date?.slice(0, 16) ?? "",
       description: w.description,
       technician: w.technician ?? null,
-      status: w.status,
     });
     setEditing(w);
   };
@@ -229,6 +253,7 @@ export function OrdenesTrabajoPage() {
     try {
       const payload: WorkOrderInput = {
         ...form,
+        number: form.number?.trim() || undefined,
         end_date: form.end_date ? form.end_date : null,
         technician: form.technician || null,
       };
@@ -243,6 +268,51 @@ export function OrdenesTrabajoPage() {
       alert(getApiErrorMessage(err, "Error al guardar"));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // --- Máquina de estados (§9): las transiciones solo pasan por estas acciones.
+  const runTransition = async (
+    w: WorkOrder,
+    fn: () => Promise<unknown>,
+    fallback: string,
+  ) => {
+    setTransitioning(w.id);
+    try {
+      await fn();
+      if (detail?.id === w.id) await reloadDetail();
+      await load();
+    } catch (err) {
+      alert(getApiErrorMessage(err, fallback));
+    } finally {
+      setTransitioning(null);
+    }
+  };
+
+  const approve = (w: WorkOrder) =>
+    runTransition(w, () => workOrdersService.approve(w.id), "No se pudo aprobar la orden");
+  const startWork = (w: WorkOrder) =>
+    runTransition(w, () => workOrdersService.start(w.id), "No se pudo iniciar la orden");
+
+  const openCancel = (w: WorkOrder) => {
+    setCancelReason("");
+    setCancelling(w);
+  };
+
+  const submitCancel = async () => {
+    if (!cancelling) return;
+    const reason = cancelReason.trim();
+    if (!reason) return;
+    setCancelSaving(true);
+    try {
+      await workOrdersService.cancel(cancelling.id, { reason });
+      setCancelling(null);
+      if (detail?.id === cancelling.id) setDetail(null);
+      await load();
+    } catch (err) {
+      alert(getApiErrorMessage(err, "No se pudo cancelar la orden"));
+    } finally {
+      setCancelSaving(false);
     }
   };
 
@@ -262,22 +332,29 @@ export function OrdenesTrabajoPage() {
 
   const openComplete = (w: WorkOrder) => {
     setCompleteObs("");
+    setCompleteError(null);
     setCompleting(w);
   };
 
   const submitComplete = async () => {
     if (!completing) return;
+    const notes = completeObs.trim();
+    if (!notes) {
+      setCompleteError("Las observaciones de cierre son obligatorias.");
+      return;
+    }
+    setCompleteError(null);
     setCompleteSaving(true);
     try {
-      await workOrdersService.complete(completing.id, {
-        observations: completeObs.trim() || undefined,
-      });
+      await workOrdersService.complete(completing.id, { closing_notes: notes });
       setCompleting(null);
       setCompleteObs("");
       setDetail(null);
       await load();
     } catch (err) {
-      alert(getApiErrorMessage(err, "No se pudo registrar el mantenimiento"));
+      setCompleteError(
+        getApiErrorMessage(err, "No se pudo cerrar la orden"),
+      );
     } finally {
       setCompleteSaving(false);
     }
@@ -292,6 +369,7 @@ export function OrdenesTrabajoPage() {
       evidences: [],
       signatures: [],
       cost: null,
+      activities: [],
     });
     try {
       setDetail(await workOrdersService.details(w.id));
@@ -443,21 +521,53 @@ export function OrdenesTrabajoPage() {
                       )}
                     </td>
                     <td className="py-3">
-                      <Badge tone={STATUS_TONE[w.status]}>
-                        {w.status_display ?? STATUS_LABEL[w.status]}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge tone={STATUS_TONE[w.status]}>
+                          {w.status_display ?? STATUS_LABEL[w.status]}
+                        </Badge>
+                        <SemaphoreBadge payload={w.semaphore} showDays />
+                      </div>
                     </td>
                     <td className="py-3">
                       <div className="flex flex-wrap justify-end gap-2">
-                        {canEdit &&
-                          (w.status === "PENDING" ||
-                            w.status === "IN_PROGRESS") && (
+                        {canApprove && w.status === "PENDING" && (
+                          <Button
+                            size="sm"
+                            leftIcon={<BadgeCheck size={14} />}
+                            loading={transitioning === w.id}
+                            onClick={() => void approve(w)}
+                          >
+                            Aprobar
+                          </Button>
+                        )}
+                        {canEdit && w.status === "APPROVED" && (
+                          <Button
+                            size="sm"
+                            leftIcon={<Play size={14} />}
+                            loading={transitioning === w.id}
+                            onClick={() => void startWork(w)}
+                          >
+                            Iniciar
+                          </Button>
+                        )}
+                        {canEdit && w.status === "IN_PROGRESS" && (
+                          <Button
+                            size="sm"
+                            leftIcon={<Wrench size={14} />}
+                            onClick={() => openComplete(w)}
+                          >
+                            Terminar
+                          </Button>
+                        )}
+                        {canApprove &&
+                          (w.status === "PENDING" || w.status === "APPROVED") && (
                             <Button
                               size="sm"
-                              leftIcon={<Wrench size={14} />}
-                              onClick={() => openComplete(w)}
+                              variant="danger"
+                              leftIcon={<Ban size={14} />}
+                              onClick={() => openCancel(w)}
                             >
-                              Realizar mantenimiento
+                              Cancelar
                             </Button>
                           )}
                         <Button
@@ -468,16 +578,18 @@ export function OrdenesTrabajoPage() {
                         >
                           Detalle
                         </Button>
-                        {canEdit && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            leftIcon={<Pencil size={14} />}
-                            onClick={() => openEdit(w)}
-                          >
-                            Editar
-                          </Button>
-                        )}
+                        {canEdit &&
+                          w.status !== "FINISHED" &&
+                          w.status !== "CANCELLED" && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              leftIcon={<Pencil size={14} />}
+                              onClick={() => openEdit(w)}
+                            >
+                              Editar
+                            </Button>
+                          )}
                         {canDelete && (
                           <Button
                             size="sm"
@@ -561,9 +673,9 @@ export function OrdenesTrabajoPage() {
           />
           <Input
             label="Número de orden"
-            value={form.number}
+            value={form.number ?? ""}
             onChange={(e) => setForm({ ...form, number: e.target.value })}
-            required
+            hint={editing ? undefined : "Se genera automáticamente si lo dejas vacío"}
           />
           <Select
             label="Tipo"
@@ -603,17 +715,19 @@ export function OrdenesTrabajoPage() {
             }
             options={technicianOptions}
           />
-          <Select
-            label="Estado"
-            value={form.status}
-            onChange={(e) =>
-              setForm({ ...form, status: e.target.value as WorkOrderStatus })
-            }
-            options={Object.entries(STATUS_LABEL).map(([value, label]) => ({
-              value,
-              label,
-            }))}
-          />
+          {editing && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-app">Estado</span>
+              <div className="flex items-center py-2">
+                <Badge tone={STATUS_TONE[editing.status]}>
+                  {editing.status_display ?? STATUS_LABEL[editing.status]}
+                </Badge>
+              </div>
+              <p className="text-xs text-app-muted">
+                El estado cambia con Aprobar · Iniciar · Terminar · Cancelar.
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <label className="text-sm font-medium text-app">Descripción</label>
             <textarea
@@ -660,17 +774,17 @@ export function OrdenesTrabajoPage() {
             detail={detail}
             loading={detailLoading}
             canEdit={canEdit}
+            canApprove={canApprove}
+            transitioning={transitioning === detail.id}
             onChanged={reloadDetail}
-            onRealizarMantenimiento={
-              canEdit &&
-              (detail.status === "PENDING" || detail.status === "IN_PROGRESS")
-                ? () => {
-                    const w = detail;
-                    setDetail(null);
-                    openComplete(w);
-                  }
-                : undefined
-            }
+            onApprove={() => void approve(detail)}
+            onStart={() => void startWork(detail)}
+            onCancel={() => openCancel(detail)}
+            onComplete={() => {
+              const w = detail;
+              setDetail(null);
+              openComplete(w);
+            }}
           />
         )}
       </Modal>
@@ -678,9 +792,7 @@ export function OrdenesTrabajoPage() {
       <Modal
         open={!!completing}
         onClose={() => setCompleting(null)}
-        title={
-          completing ? `Realizar mantenimiento — ${completing.number}` : ""
-        }
+        title={completing ? `Terminar orden — ${completing.number}` : ""}
         size="lg"
       >
         {completing && (
@@ -694,24 +806,38 @@ export function OrdenesTrabajoPage() {
                 <span className="text-app-muted">Tarea: </span>
                 {completing.description}
               </p>
+              <p>
+                <span className="text-app-muted">Actividades registradas: </span>
+                {completing.activities_count ?? 0}
+              </p>
             </div>
+            {(completing.activities_count ?? 0) === 0 && (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                No se puede cerrar la orden sin al menos una actividad técnica.
+                Agrégala desde <strong>Detalle → Actividades</strong>.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-app">
-                Observaciones / trabajo realizado (opcional)
+                Observaciones de cierre <span className="text-red-600">*</span>
               </label>
               <textarea
                 value={completeObs}
                 onChange={(e) => setCompleteObs(e.target.value)}
                 rows={4}
-                placeholder="Hallazgos, repuestos cambiados, recomendaciones…"
+                placeholder="Estado final del equipo, trabajo realizado, recomendaciones…"
                 className="w-full rounded-lg border border-app bg-surface px-3 py-2.5 text-sm text-app outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
               />
             </div>
+            {completeError && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                {completeError}
+              </p>
+            )}
             <p className="text-xs text-app-muted">
-              Al confirmar, la orden queda como <strong>Terminada</strong> y el
-              mantenimiento se registra en la hoja de vida del equipo. Los
-              repuestos, mediciones y evidencias se agregan desde{" "}
-              <strong>Detalle</strong>, antes o después.
+              Al confirmar, la orden pasa a <strong>Terminada</strong>, se registra
+              quién y cuándo la cerró, y el mantenimiento queda en la hoja de vida
+              del equipo. Una orden terminada no se puede editar.
             </p>
             <div className="flex justify-end gap-2">
               <Button
@@ -724,9 +850,55 @@ export function OrdenesTrabajoPage() {
               <Button
                 leftIcon={<Wrench size={16} />}
                 loading={completeSaving}
+                disabled={(completing.activities_count ?? 0) === 0}
                 onClick={() => void submitComplete()}
               >
-                Confirmar mantenimiento
+                Terminar orden
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!cancelling}
+        onClose={() => setCancelling(null)}
+        title={cancelling ? `Cancelar orden — ${cancelling.number}` : ""}
+        size="md"
+      >
+        {cancelling && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-app-muted">
+              La orden quedará <strong>Cancelada</strong> y no podrá reabrirse.
+              Indica el motivo (queda en la auditoría).
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-app">
+                Motivo <span className="text-red-600">*</span>
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-app bg-surface px-3 py-2.5 text-sm text-app outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setCancelling(null)}
+              >
+                Volver
+              </Button>
+              <Button
+                variant="danger"
+                leftIcon={<Ban size={16} />}
+                loading={cancelSaving}
+                disabled={!cancelReason.trim()}
+                onClick={() => void submitCancel()}
+              >
+                Cancelar orden
               </Button>
             </div>
           </div>
@@ -744,16 +916,28 @@ function WorkOrderDetailView({
   detail,
   loading,
   canEdit,
+  canApprove,
+  transitioning,
   onChanged,
-  onRealizarMantenimiento,
+  onApprove,
+  onStart,
+  onCancel,
+  onComplete,
 }: {
   detail: WorkOrderDetail;
   loading: boolean;
   canEdit: boolean;
+  canApprove: boolean;
+  transitioning: boolean;
   onChanged: () => Promise<void>;
-  /** Si se define, se muestra el botón para cerrar la orden desde el detalle. */
-  onRealizarMantenimiento?: () => void;
+  onApprove: () => void;
+  onStart: () => void;
+  onCancel: () => void;
+  onComplete: () => void;
 }) {
+  const closedOrCancelled =
+    detail.status === "FINISHED" || detail.status === "CANCELLED";
+  const canDocument = canEdit && !closedOrCancelled;
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-2 rounded-lg border border-app bg-app-muted p-3 text-sm sm:grid-cols-2">
@@ -768,37 +952,113 @@ function WorkOrderDetailView({
         </div>
         <div>
           <span className="text-app-muted">Estado: </span>
-          {detail.status_display ?? detail.status}
+          <Badge tone={STATUS_TONE[detail.status]}>
+            {detail.status_display ?? STATUS_LABEL[detail.status]}
+          </Badge>
+        </div>
+        <div>
+          <span className="text-app-muted">Cumplimiento: </span>
+          <SemaphoreBadge payload={detail.semaphore} showDays />
         </div>
         <div>
           <span className="text-app-muted">Técnico: </span>
           {detail.technician_name ?? "Sin asignar"}
         </div>
+        {detail.approved_by_name && (
+          <div>
+            <span className="text-app-muted">Aprobó: </span>
+            {detail.approved_by_name}
+            {detail.approved_at
+              ? ` · ${new Date(detail.approved_at).toLocaleString()}`
+              : ""}
+          </div>
+        )}
+        {detail.closed_by_name && (
+          <div>
+            <span className="text-app-muted">Cerró: </span>
+            {detail.closed_by_name}
+            {detail.closed_at
+              ? ` · ${new Date(detail.closed_at).toLocaleString()}`
+              : ""}
+          </div>
+        )}
         <div className="sm:col-span-2">
           <span className="text-app-muted">Descripción: </span>
           {detail.description}
         </div>
+        {detail.closing_notes && (
+          <div className="sm:col-span-2">
+            <span className="text-app-muted">Observaciones de cierre: </span>
+            {detail.closing_notes}
+          </div>
+        )}
+        {detail.cancel_reason && (
+          <div className="sm:col-span-2">
+            <span className="text-app-muted">Motivo de cancelación: </span>
+            {detail.cancel_reason}
+          </div>
+        )}
       </div>
 
-      {onRealizarMantenimiento && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 p-3">
-          <p className="text-sm text-app-muted">
-            Cuando termines el trabajo, márcalo como realizado para dejarlo en la
-            hoja de vida del equipo.
-          </p>
-          <Button
-            size="sm"
-            leftIcon={<Wrench size={14} />}
-            onClick={onRealizarMantenimiento}
-          >
-            Realizar mantenimiento
-          </Button>
-        </div>
-      )}
+      {!closedOrCancelled &&
+        (canApprove || canEdit) &&
+        detail.status !== "FINISHED" && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 p-3">
+            <span className="text-sm text-app-muted">
+              Ciclo de la orden:
+            </span>
+            {canApprove && detail.status === "PENDING" && (
+              <Button
+                size="sm"
+                leftIcon={<BadgeCheck size={14} />}
+                loading={transitioning}
+                onClick={onApprove}
+              >
+                Aprobar
+              </Button>
+            )}
+            {canEdit && detail.status === "APPROVED" && (
+              <Button
+                size="sm"
+                leftIcon={<Play size={14} />}
+                loading={transitioning}
+                onClick={onStart}
+              >
+                Iniciar
+              </Button>
+            )}
+            {canEdit && detail.status === "IN_PROGRESS" && (
+              <Button
+                size="sm"
+                leftIcon={<Wrench size={14} />}
+                onClick={onComplete}
+              >
+                Terminar orden
+              </Button>
+            )}
+            {canApprove &&
+              (detail.status === "PENDING" || detail.status === "APPROVED") && (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  leftIcon={<Ban size={14} />}
+                  onClick={onCancel}
+                >
+                  Cancelar
+                </Button>
+              )}
+          </div>
+        )}
 
       {loading && (
         <p className="text-sm text-app-muted">Cargando elementos...</p>
       )}
+
+      <ActivitiesSection
+        detail={detail}
+        canEdit={canDocument}
+        onChanged={onChanged}
+      />
 
       <ChildSection
         title="Repuestos"
@@ -1196,6 +1456,242 @@ function CostSection({
           </div>
         )}
       </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Actividades técnicas (RF009): tarea, fecha/hora, responsable, hallazgos,
+// recomendaciones, horómetro y estado operativo tras la intervención.
+// Registrar la primera actividad mueve la orden a "En proceso".
+// ---------------------------------------------------------------------------
+
+const emptyActivity = {
+  description: "",
+  findings: "",
+  recommendations: "",
+  hourmeter: "",
+  equipment_status_after: "" as EquipmentOperationalStatus | "",
+};
+
+function ActivitiesSection({
+  detail,
+  canEdit,
+  onChanged,
+}: {
+  detail: WorkOrderDetail;
+  canEdit: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const rows = detail.activities ?? [];
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState(emptyActivity);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!draft.description.trim()) {
+      setError("La actividad realizada es obligatoria.");
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      await workOrdersService.activity.create({
+        work_order: detail.id,
+        description: draft.description.trim(),
+        findings: draft.findings.trim() || undefined,
+        recommendations: draft.recommendations.trim() || undefined,
+        hourmeter: draft.hourmeter.trim() || undefined,
+        equipment_status_after: draft.equipment_status_after || undefined,
+      });
+      setDraft(emptyActivity);
+      setAdding(false);
+      await onChanged();
+    } catch (err) {
+      setError(getApiErrorMessage(err, "No se pudo registrar la actividad"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    setBusy(true);
+    try {
+      await workOrdersService.activity.remove(id);
+      await onChanged();
+    } catch (err) {
+      alert(getApiErrorMessage(err, "No se pudo eliminar"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-app">
+          Actividades técnicas{" "}
+          <span className="font-normal text-app-muted">({rows.length})</span>
+        </h3>
+        {canEdit && !adding && (
+          <Button
+            size="sm"
+            variant="secondary"
+            leftIcon={<Plus size={14} />}
+            onClick={() => {
+              setDraft(emptyActivity);
+              setError(null);
+              setAdding(true);
+            }}
+          >
+            Registrar actividad
+          </Button>
+        )}
+      </div>
+
+      {rows.length === 0 && !adding && (
+        <p className="text-sm text-app-muted">
+          Sin actividades registradas. Se necesita al menos una para poder
+          terminar la orden.
+        </p>
+      )}
+
+      {rows.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {rows.map((a) => (
+            <div
+              key={a.id}
+              className="rounded-lg border border-app bg-app-muted p-3 text-sm"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-col gap-1">
+                  <p className="font-medium text-app">{a.description}</p>
+                  <p className="text-xs text-app-muted">
+                    {new Date(a.performed_at).toLocaleString()}
+                    {a.performed_by_name ? ` · ${a.performed_by_name}` : ""}
+                    {a.equipment_status_after_display
+                      ? ` · Equipo: ${a.equipment_status_after_display}`
+                      : ""}
+                    {a.hourmeter ? ` · Horómetro: ${a.hourmeter}` : ""}
+                  </p>
+                  {a.findings && (
+                    <p className="text-xs">
+                      <span className="text-app-muted">Hallazgos: </span>
+                      {a.findings}
+                    </p>
+                  )}
+                  {a.recommendations && (
+                    <p className="text-xs">
+                      <span className="text-app-muted">Recomendaciones: </span>
+                      {a.recommendations}
+                    </p>
+                  )}
+                </div>
+                {canEdit && (
+                  <button
+                    type="button"
+                    aria-label="Eliminar actividad"
+                    disabled={busy}
+                    onClick={() => void remove(a.id)}
+                    className="shrink-0 rounded p-1 text-app-muted hover:text-red-600 disabled:opacity-50"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {adding && (
+        <div className="flex flex-col gap-3 rounded-lg border border-app bg-surface p-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-app">
+              Actividad realizada <span className="text-red-600">*</span>
+            </label>
+            <textarea
+              value={draft.description}
+              onChange={(e) =>
+                setDraft({ ...draft, description: e.target.value })
+              }
+              rows={2}
+              className="w-full rounded-lg border border-app bg-surface px-3 py-2 text-sm text-app outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-app">Hallazgos</label>
+              <textarea
+                value={draft.findings}
+                onChange={(e) =>
+                  setDraft({ ...draft, findings: e.target.value })
+                }
+                rows={2}
+                className="w-full rounded-lg border border-app bg-surface px-3 py-2 text-sm text-app outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-app">
+                Recomendaciones
+              </label>
+              <textarea
+                value={draft.recommendations}
+                onChange={(e) =>
+                  setDraft({ ...draft, recommendations: e.target.value })
+                }
+                rows={2}
+                className="w-full rounded-lg border border-app bg-surface px-3 py-2 text-sm text-app outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+              />
+            </div>
+            <Input
+              label="Horómetro / kilometraje"
+              type="number"
+              step="0.01"
+              value={draft.hourmeter}
+              onChange={(e) =>
+                setDraft({ ...draft, hourmeter: e.target.value })
+              }
+            />
+            <Select
+              label="Estado del equipo tras la intervención"
+              value={draft.equipment_status_after}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  equipment_status_after: e.target
+                    .value as EquipmentOperationalStatus | "",
+                })
+              }
+              options={[
+                { value: "", label: "Sin cambio" },
+                ...Object.entries(EQUIPMENT_STATUS_LABEL).map(
+                  ([value, label]) => ({ value, label }),
+                ),
+              ]}
+            />
+          </div>
+          {error && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              type="button"
+              onClick={() => setAdding(false)}
+            >
+              Cancelar
+            </Button>
+            <Button size="sm" loading={busy} onClick={() => void submit()}>
+              Guardar actividad
+            </Button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

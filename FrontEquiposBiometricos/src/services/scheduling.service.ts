@@ -1,6 +1,12 @@
 import { api } from "@/lib/api";
 import type { Paginated } from "@/types/api";
-import type { ScheduleInput, ScheduledMaintenance } from "@/types/scheduling";
+import type {
+  AnnualPlanResult,
+  MaintenanceCalendar,
+  ScheduleInput,
+  ScheduleKind,
+  ScheduledMaintenance,
+} from "@/types/scheduling";
 
 export interface ScheduleListParams {
   ordering?: string;
@@ -58,6 +64,27 @@ export const schedulingService = {
   async notify(id: number) {
     const res = await api.post<{ detail: string }>(
       `/scheduling/maintenances/${id}/notify/`,
+    );
+    return res.data;
+  },
+  /** RF006 — genera el cronograma anual del equipo por su frecuencia. */
+  async generatePlan(input: {
+    equipment: number;
+    year: number;
+    kind: ScheduleKind;
+    start_date?: string;
+  }) {
+    const res = await api.post<AnnualPlanResult>(
+      "/scheduling/maintenances/generate-plan/",
+      input,
+    );
+    return res.data;
+  },
+  /** RF006 — cronograma anual agrupado por mes. */
+  async calendar(params: { year: number } & Omit<ScheduleListParams, "ordering">) {
+    const res = await api.get<MaintenanceCalendar>(
+      "/scheduling/maintenances/calendar/",
+      { params },
     );
     return res.data;
   },

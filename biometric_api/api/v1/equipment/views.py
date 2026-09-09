@@ -1,23 +1,28 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from api.v1.common.mixins import AuditLogMixin
 from api.v1.common.pagination import QrCodePagination, StandardResultsSetPagination
 from api.v1.common.permissions import (
+    MANAGEMENT_ROLES,
     AdminPermissions,
-    CoordBiomedicalPermission,
     EngineerBiomedicalPermissions,
+    OperationalAccess,
 )
+from apps.equipment import workflow
 from apps.equipment.models import (
     Equipment,
     EquipmentAttachment,
     EquipmentCertificate,
     EquipmentInstruction,
     EquipmentWorkOrder,
+    WorkOrderActivity,
     WorkOrderCost,
     WorkOrderEvidence,
     WorkOrderMeasurement,
@@ -36,12 +41,19 @@ from .serializers import (
     EquipmentSerializer,
     EquipmentWorkOrderDetailSerializer,
     EquipmentWorkOrderSerializer,
+    WorkOrderActivitySerializer,
     WorkOrderCostSerializer,
     WorkOrderEvidenceSerializer,
     WorkOrderMeasurementSerializer,
     WorkOrderSignatureSerializer,
     WorkOrderSparePartSerializer,
 )
+
+
+def _workflow_error_response(exc: DjangoValidationError) -> Response:
+    """Traduce un WorkflowError a una respuesta 400 con forma de error de DRF."""
+    detail = exc.message_dict if hasattr(exc, "error_dict") else {"detail": exc.messages}
+    return Response(detail, status=status.HTTP_400_BAD_REQUEST)
 
 
 class EquipmentViewSet(AuditLogMixin, viewsets.ModelViewSet):
@@ -240,15 +252,9 @@ class EquipmentWorkOrderViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
     serializer_class = EquipmentWorkOrderSerializer
     pagination_class = StandardResultsSetPagination
-    # Órdenes de trabajo: Ingeniero (emite), Coordinador (aprueba/cierra),
-    # Ingeniero (ejecuta/documenta) y Coordinador (autoriza/cierra).
-    permission_classes = (
-        IsAuthenticated,
-        (
-            EngineerBiomedicalPermissions
-            | CoordBiomedicalPermission
-        )
-    )
+    # Órdenes de trabajo: Ingeniero (emite/ejecuta), Coordinador (aprueba/cierra).
+    # El Usuario Operativo no accede a las órdenes (RF001).
+    permission_classes = (IsAuthenticated, OperationalAccess)
 
     filterset_fields = ("status", "service_type", "equipment", "technician")
 
@@ -278,8 +284,28 @@ class EquipmentWorkOrderViewSet(AuditLogMixin, viewsets.ModelViewSet):
                 "evidences",
                 "signatures",
                 "cost",
+                "activities",
+                "activities__performed_by",
             )
         return queryset
+
+    _CLOSED_STATUSES = (WorkOrderStatus.FINISHED, WorkOrderStatus.CANCELLED)
+
+    def _require_management_role(self):
+        """Aprobar/cancelar son actos de autoridad: solo Coordinador o Admin.
+        No basta con ocultar el botón en el frontend — el backend lo niega."""
+        if getattr(self.request.user, "role", None) not in MANAGEMENT_ROLES:
+            raise PermissionDenied(
+                "Solo un coordinador biomédico o un administrador puede realizar esta acción."
+            )
+
+    def perform_update(self, serializer):
+        # §9: una orden terminada o cancelada no admite edición ordinaria.
+        if serializer.instance.status in self._CLOSED_STATUSES:
+            raise DRFValidationError(
+                {"detail": "Una orden terminada o cancelada no se puede editar."}
+            )
+        super().perform_update(serializer)  # audita el cambio (RFN009)
 
     @action(detail=True, methods=["get"], url_path="details")
     def details(self, request, pk: str | None = None):
@@ -288,34 +314,62 @@ class EquipmentWorkOrderViewSet(AuditLogMixin, viewsets.ModelViewSet):
         serializer = self.get_serializer(work_order)
         return Response(serializer.data)
 
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request, pk: str | None = None):
+        """PENDIENTE → APROBADA. Convierte la solicitud en orden formal (RF008)."""
+        self._require_management_role()
+        work_order = self.get_object()
+        try:
+            workflow.approve(work_order, actor=request.user, request=request)
+        except DjangoValidationError as exc:
+            return _workflow_error_response(exc)
+        return Response(self.get_serializer(work_order).data)
+
+    @action(detail=True, methods=["post"], url_path="start")
+    def start(self, request, pk: str | None = None):
+        """APROBADA → EN_PROCESO. También ocurre solo al registrar la primera
+        actividad técnica."""
+        work_order = self.get_object()
+        try:
+            workflow.start(work_order, actor=request.user, request=request)
+        except DjangoValidationError as exc:
+            return _workflow_error_response(exc)
+        return Response(self.get_serializer(work_order).data)
+
     @action(detail=True, methods=["post"], url_path="complete")
     def complete(self, request, pk: str | None = None):
-        """Cierra la orden: la marca como Terminada y (vía signal) deja el
-        mantenimiento en la hoja de vida del equipo. Acepta un texto opcional
-        `observations` que se anexa a la descripción.
-        """
+        """EN_PROCESO → TERMINADA (RF011). Exige actividades registradas y
+        observaciones de cierre; deja el mantenimiento en la hoja de vida
+        (vía signal) y registra responsable/fecha de cierre en auditoría."""
         work_order = self.get_object()
-
-        if work_order.status == WorkOrderStatus.FINISHED:
-            return Response(
-                {"detail": "La orden de trabajo ya está terminada."},
-                status=status.HTTP_400_BAD_REQUEST,
+        # `observations` se mantiene por compatibilidad con el cliente anterior.
+        closing_notes = request.data.get("closing_notes") or request.data.get("observations")
+        try:
+            workflow.complete(
+                work_order,
+                actor=request.user,
+                closing_notes=closing_notes or "",
+                request=request,
             )
+        except DjangoValidationError as exc:
+            return _workflow_error_response(exc)
+        return Response(self.get_serializer(work_order).data)
 
-        observations = str(request.data.get("observations") or "").strip()
-        if observations:
-            fecha = timezone.localdate().isoformat()
-            work_order.description = (
-                f"{work_order.description}\n\nCierre ({fecha}): {observations}"
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk: str | None = None):
+        """PENDIENTE|APROBADA → CANCELADA. Requiere motivo (RFN009)."""
+        self._require_management_role()
+        work_order = self.get_object()
+        try:
+            workflow.cancel(
+                work_order,
+                actor=request.user,
+                reason=request.data.get("reason") or "",
+                request=request,
             )
-
-        work_order.status = WorkOrderStatus.FINISHED
-        if work_order.end_date is None:
-            work_order.end_date = timezone.now()
-        work_order.save()
-
-        serializer = self.get_serializer(work_order)
-        return Response(serializer.data)
+        except DjangoValidationError as exc:
+            return _workflow_error_response(exc)
+        return Response(self.get_serializer(work_order).data)
 
 class WorkOrderSparePartViewSet(viewsets.ModelViewSet):
 
@@ -328,7 +382,7 @@ class WorkOrderSparePartViewSet(viewsets.ModelViewSet):
 
     serializer_class = WorkOrderSparePartSerializer
     # Repuestos utilizados: los documenta el Ingeniero.
-    permission_classes = (IsAuthenticated, EngineerBiomedicalPermissions)
+    permission_classes = (IsAuthenticated, OperationalAccess)
 
     search_fields = ("name","reference","work_order__number")
 
@@ -348,7 +402,7 @@ class WorkOrderMeasurementViewSet(viewsets.ModelViewSet):
 
     serializer_class = WorkOrderMeasurementSerializer
     # Mediciones tomadas: las documenta el Ingeniero.
-    permission_classes = (IsAuthenticated, EngineerBiomedicalPermissions)
+    permission_classes = (IsAuthenticated, OperationalAccess)
 
     search_fields = (
         "parameter",
@@ -377,7 +431,7 @@ class WorkOrderEvidenceViewSet(viewsets.ModelViewSet):
 
     serializer_class = WorkOrderEvidenceSerializer
     # Evidencia fotográfica de la intervención: la sube el Ingeniero.
-    permission_classes = (IsAuthenticated, EngineerBiomedicalPermissions)
+    permission_classes = (IsAuthenticated, OperationalAccess)
 
     search_fields = (
         "description",
@@ -400,10 +454,7 @@ class WorkOrderSignatureViewSet(viewsets.ModelViewSet):
 
     serializer_class = WorkOrderSignatureSerializer
     # Firmas de la orden: Ingeniero (ejecución) y Coordinador (cierre formal).
-    permission_classes = (
-        IsAuthenticated,
-        EngineerBiomedicalPermissions | CoordBiomedicalPermission,
-    )
+    permission_classes = (IsAuthenticated, OperationalAccess)
 
     search_fields = ("signed_by","role","work_order__number")
     ordering_fields = (
@@ -415,10 +466,8 @@ class WorkOrderSignatureViewSet(viewsets.ModelViewSet):
 
 class WorkOrderCostViewSet(viewsets.ModelViewSet):
 
-    """ 
-    
-    CRUD de costos asociados a una orden de trabajo.
-    
+    """CRUD de costos asociados a una orden de trabajo.
+
     Cada orden puede tener un único registro de costos.
     """
 
@@ -429,10 +478,7 @@ class WorkOrderCostViewSet(viewsets.ModelViewSet):
 
     serializer_class = WorkOrderCostSerializer
     # Costos de la orden: Ingeniero (repuestos/insumos) y Coordinador (cierre).
-    permission_classes = (
-        IsAuthenticated,
-        EngineerBiomedicalPermissions | CoordBiomedicalPermission,
-    )
+    permission_classes = (IsAuthenticated, OperationalAccess)
 
     search_fields = (
         "work_order__number",
@@ -447,3 +493,48 @@ class WorkOrderCostViewSet(viewsets.ModelViewSet):
     )
 
     ordering = ("work_order",)
+
+
+class WorkOrderActivityViewSet(AuditLogMixin, viewsets.ModelViewSet):
+    """Actividades técnicas de una orden de trabajo (RF009).
+
+    Registrar la primera actividad mueve la orden de APROBADA a EN_PROCESO. No
+    se pueden registrar actividades en una orden PENDIENTE (sin aprobar),
+    TERMINADA o CANCELADA.
+    """
+
+    queryset = WorkOrderActivity.objects.select_related(
+        "work_order", "work_order__equipment", "performed_by"
+    )
+    serializer_class = WorkOrderActivitySerializer
+    # Las actividades las documenta quien ejecuta: Ingeniero (o Coordinador).
+    permission_classes = (IsAuthenticated, OperationalAccess)
+    filterset_fields = ("work_order",)
+    search_fields = ("description", "findings", "recommendations", "work_order__number")
+    ordering_fields = ("performed_at", "created_at")
+    ordering = ("performed_at",)
+
+    _EDITABLE_STATUSES = (WorkOrderStatus.APPROVED, WorkOrderStatus.IN_PROGRESS)
+
+    def perform_create(self, serializer):
+        work_order = serializer.validated_data["work_order"]
+        if work_order.status not in self._EDITABLE_STATUSES:
+            raise DRFValidationError(
+                {
+                    "work_order": [
+                        "La orden debe estar APROBADA o EN PROCESO para registrar actividades."
+                    ]
+                }
+            )
+        if not serializer.validated_data.get("performed_by"):
+            serializer.validated_data["performed_by"] = self.request.user
+        super().perform_create(serializer)  # guarda + audita (RFN009)
+        # Al iniciar actividades, la orden pasa a EN_PROCESO (§9).
+        workflow.start(work_order, actor=self.request.user, request=self.request)
+
+    def perform_update(self, serializer):
+        if serializer.instance.work_order.status not in self._EDITABLE_STATUSES:
+            raise DRFValidationError(
+                {"work_order": ["No se pueden editar actividades de una orden cerrada."]}
+            )
+        super().perform_update(serializer)

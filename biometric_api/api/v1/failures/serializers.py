@@ -11,6 +11,7 @@ class FailureRecordSerializer(serializers.ModelSerializer):
     # Sin trim_whitespace para que un valor "   " caiga en validate_description
     # y dispare el mensaje en español, en lugar del genérico de DRF.
     description = serializers.CharField(trim_whitespace=False)
+    corrective_work_order_info = serializers.SerializerMethodField()
 
     class Meta:
         model = FailureRecord
@@ -25,10 +26,32 @@ class FailureRecordSerializer(serializers.ModelSerializer):
             "resolved",
             "resolved_at",
             "resolution_notes",
+            "corrective_work_order",
+            "corrective_work_order_info",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        # `corrective_work_order` se establece solo vía la acción `create_work_order`
+        # (RF007): así el vínculo Falla → Orden queda siempre trazado.
+        read_only_fields = (
+            "id",
+            "corrective_work_order",
+            "corrective_work_order_info",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_corrective_work_order_info(self, obj):
+        wo = obj.corrective_work_order
+        if wo is None:
+            return None
+        return {
+            "id": wo.id,
+            "number": wo.number,
+            "status": wo.status,
+            "status_display": wo.get_status_display(),
+            "service_type": wo.service_type,
+        }
 
     def validate_description(self, value: str) -> str:
         normalized = value.strip() if value else ""

@@ -5,9 +5,20 @@ from typing import cast
 import qrcode
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.utils import timezone
 from qrcode.image.pil import PilImage
 
-from .models import Equipment
+from .models import Equipment, EquipmentWorkOrder
+
+
+def generate_work_order_number(equipment: Equipment) -> str:
+    """Número de orden legible y único: OT-<YYYYMMDD>-<asset_tag>[-n]."""
+    base = f"OT-{timezone.localdate():%Y%m%d}-{equipment.asset_tag}"
+    number, i = base, 2
+    while EquipmentWorkOrder.objects.filter(number=number).exists():
+        number = f"{base}-{i}"
+        i += 1
+    return number
 
 
 def build_qr_payload(equipment: Equipment) -> str:

@@ -1,3 +1,5 @@
+import type { SemaphorePayload } from "@/lib/semaphore";
+
 export type WorkOrderServiceType =
     | "PREVENTIVE"
     | "CORRECTIVE"
@@ -7,9 +9,16 @@ export type WorkOrderServiceType =
 
 export type WorkOrderStatus =
     | "PENDING"
+    | "APPROVED"
     | "IN_PROGRESS"
     | "FINISHED"
     | "CANCELLED"
+
+export type EquipmentOperationalStatus =
+    | "ACTIVE"
+    | "INACTIVE"
+    | "IN_MAINTENANCE"
+    | "IN_REPAIR"
 
 export type EvidenceType = "PHOTO" | "VIDEO" | "DOCUMENT" | "AUDIO"
 
@@ -67,6 +76,31 @@ export interface WorkOrderScheduleInfo {
     is_completed:boolean;
 }
 
+export interface WorkOrderActivity {
+    id:number;
+    work_order:number;
+    performed_at:string;
+    performed_by?: number | null;
+    performed_by_name?: string | null;
+    description:string;
+    findings?:string;
+    recommendations?:string;
+    hourmeter?: string | null;
+    equipment_status_after?: EquipmentOperationalStatus | "";
+    equipment_status_after_display?: string | null;
+    created_at?:string;
+}
+
+export interface WorkOrderActivityInput {
+    work_order:number;
+    description:string;
+    performed_at?:string;
+    findings?:string;
+    recommendations?:string;
+    hourmeter?: string | null;
+    equipment_status_after?: EquipmentOperationalStatus | "";
+}
+
 export interface WorkOrder {
     id:number;
     equipment:number;
@@ -82,9 +116,21 @@ export interface WorkOrder {
     technician_name?: string | null;
     status: WorkOrderStatus;
     status_display?: string;
+    semaphore?: SemaphorePayload | null;
     report?: string | null;
     schedule?: number | null;
     schedule_info?:WorkOrderScheduleInfo | null;
+    approved_by?: number | null;
+    approved_by_name?: string | null;
+    approved_at?: string | null;
+    closed_by?: number | null;
+    closed_by_name?: string | null;
+    closed_at?: string | null;
+    closing_notes?: string;
+    cancelled_by?: number | null;
+    cancelled_at?: string | null;
+    cancel_reason?: string;
+    activities_count?: number;
     created_at?:string;
 }
 
@@ -94,15 +140,15 @@ export interface WorkOrderDetail extends WorkOrder {
     evidences: WorkOrderEvidence[];
     signatures: WorkOrderSignature[];
     cost: WorkOrderCost | null;
+    activities: WorkOrderActivity[];
 }
 
 export interface WorkOrderInput {
     equipment:number;
-    number:string;
+    number?:string;
     service_type:WorkOrderServiceType;
     start_date: string;
     end_date?: string | null;
     description:string;
     technician?:number | null;
-    status: WorkOrderStatus;
 }

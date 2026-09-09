@@ -109,6 +109,16 @@ class TestScheduleList:
         assert body["count"] == 3
         assert "results" in body
 
+    def test_list_exposes_semaphore(self, auth_client, equipment):
+        # vencido y sin completar -> 🔴 (misma regla RF010 que el dashboard)
+        MaintenanceScheduleFactory(
+            equipment=equipment,
+            scheduled_date=date.today() - timedelta(days=3),
+            is_completed=False,
+        )
+        row = auth_client.get(LIST_URL).json()["results"][0]
+        assert row["semaphore"]["code"] == "RED"
+
     def test_filter_by_equipment(self, auth_client, branch):
         eq1 = EquipmentFactory(branch=branch)
         eq2 = EquipmentFactory(branch=branch)
@@ -262,3 +272,43 @@ class TestNotifyAction:
         assert response.status_code == 200
         assert response.json() == {"detail": "notification_queued"}
         mock_delay.assert_called_once_with(schedule.pk)
+
+
+PLAN_URL = reverse("v1:scheduling:maintenance-generate-plan")
+CALENDAR_URL = reverse("v1:scheduling:maintenance-calendar")
+
+
+class TestGenerateAnnualPlan:
+    def test_creates_year_plan_from_frequency(self, auth_client, branch):
+        eq = EquipmentFactory(branch=branch, maintenance_frequency_months=3)
+        res = auth_client.post(
+            PLAN_URL,
+            {"equipment": eq.id, "year": 2027, "kind": "PREVENTIVE"},
+            format="json",
+        )
+        assert res.status_code == 201, res.content
+        assert res.json()["created"] == 4
+        assert MaintenanceSchedule.objects.filter(equipment=eq).count() == 4
+
+    def test_rejects_equipment_without_frequency(self, auth_client, equipment):
+        res = auth_client.post(
+            PLAN_URL,
+            {"equipment": equipment.id, "year": 2027, "kind": "PREVENTIVE"},
+            format="json",
+        )
+        assert res.status_code == 400
+
+
+class TestCalendar:
+    def test_groups_by_month(self, auth_client, equipment):
+        MaintenanceScheduleFactory(equipment=equipment, scheduled_date=date(2027, 2, 10))
+        MaintenanceScheduleFactory(equipment=equipment, scheduled_date=date(2027, 2, 25))
+        MaintenanceScheduleFactory(equipment=equipment, scheduled_date=date(2027, 9, 1))
+
+        body = auth_client.get(CALENDAR_URL, {"year": 2027}).json()
+        assert body["year"] == 2027
+        assert len(body["months"]) == 12
+        by_month = {m["month"]: len(m["items"]) for m in body["months"]}
+        assert by_month[2] == 2
+        assert by_month[9] == 1
+        assert by_month[5] == 0

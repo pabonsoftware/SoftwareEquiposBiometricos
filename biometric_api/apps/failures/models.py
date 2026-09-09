@@ -37,6 +37,16 @@ class FailureRecord(models.Model):
     resolved = models.BooleanField(_("Resuelta"), default=False, db_index=True)
     resolved_at = models.DateTimeField(_("Resuelta el"), null=True, blank=True)
     resolution_notes = models.TextField(_("Notas de resolución"), blank=True)
+    # RF007: una falla origina la solicitud/orden de mantenimiento correctivo.
+    # Se conserva el vínculo para la trazabilidad Falla → Orden → Cierre.
+    corrective_work_order = models.ForeignKey(
+        "equipment.EquipmentWorkOrder",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_failures",
+        verbose_name=_("Orden correctiva"),
+    )
     created_at = models.DateTimeField(_("Creada"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Actualizada"), auto_now=True)
 

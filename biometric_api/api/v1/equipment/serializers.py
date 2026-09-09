@@ -10,6 +10,7 @@ from api.v1.common.file_validation import (
     MAX_IMAGE_BYTES,
     validate_uploaded_file,
 )
+from api.v1.helpers.semaforizacion import semaphore_payload
 from apps.branches.models import Branch
 from apps.catalog.models import EquipmentModel
 from apps.equipment.models import (
@@ -18,12 +19,14 @@ EquipmentAttachment,
 EquipmentCertificate,
 EquipmentInstruction,
 EquipmentWorkOrder,
+WorkOrderActivity,
 WorkOrderCost,
 WorkOrderEvidence,
 WorkOrderMeasurement,
 WorkOrderSignature,
 WorkOrderSparePart
 )
+from apps.equipment.services import generate_work_order_number
 
 
 class EquipmentSerializer(serializers.ModelSerializer):
@@ -33,6 +36,11 @@ class EquipmentSerializer(serializers.ModelSerializer):
     qr_code_url = serializers.SerializerMethodField()
     status_display = serializers.CharField(source="get_status_display",read_only=True)
     risk_class_display = serializers.CharField(source="get_risk_class_display",read_only=True)
+    # Semáforos RF010 — se calculan en el modelo (única fuente de verdad) y aquí
+    # solo se exponen como {code, label, days_left}.
+    preventive_status = serializers.SerializerMethodField()
+    calibration_status = serializers.SerializerMethodField()
+    maintenance_semaphore = serializers.SerializerMethodField()
 
     class Meta:
         model = Equipment
@@ -88,6 +96,11 @@ class EquipmentSerializer(serializers.ModelSerializer):
             "calibration_frequency_months",
             "last_calibration",
             "next_calibration",
+            "next_preventive_date",
+            "next_calibration_date",
+            "preventive_status",
+            "calibration_status",
+            "maintenance_semaphore",
             "corrective_count",
 
             # Seguridad eléctrica
@@ -147,6 +160,25 @@ class EquipmentSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         url = obj.qr_code.url
         return request.build_absolute_uri(url) if request else url
+
+    def get_preventive_status(self, obj: Equipment) -> dict:
+        return semaphore_payload(
+            obj.next_preventive_date,
+            timezone.localdate(),
+            Equipment.PREVENTIVE_WARNING_DAYS,
+        )
+
+    def get_calibration_status(self, obj: Equipment) -> dict:
+        return semaphore_payload(
+            obj.next_calibration_date,
+            timezone.localdate(),
+            Equipment.CALIBRATION_WARNING_DAYS,
+        )
+
+    def get_maintenance_semaphore(self, obj: Equipment) -> dict:
+        # El código lo decide el modelo (worst-of); acá solo se le pone label.
+        status = obj.maintenance_semaphore
+        return {"code": status.value, "label": str(status.label)}
 
     def validate_asset_tag(self, value: str) -> str:
         normalized = value.strip().upper()
@@ -363,6 +395,49 @@ class WorkOrderCostSerializer(serializers.ModelSerializer):
             "id",
         ]
 
+class WorkOrderActivitySerializer(serializers.ModelSerializer):
+    """Actividad técnica registrada durante la ejecución de la orden (RF009)."""
+
+    performed_by_name = serializers.SerializerMethodField()
+    equipment_status_after_display = serializers.CharField(
+        source="get_equipment_status_after_display", read_only=True
+    )
+
+    class Meta:
+        model = WorkOrderActivity
+        fields = (
+            "id",
+            "work_order",
+            "performed_at",
+            "performed_by",
+            "performed_by_name",
+            "description",
+            "findings",
+            "recommendations",
+            "hourmeter",
+            "equipment_status_after",
+            "equipment_status_after_display",
+            "created_at",
+        )
+        read_only_fields = ("id", "performed_by_name", "equipment_status_after_display", "created_at")
+
+    def get_performed_by_name(self, obj):
+        if not obj.performed_by:
+            return None
+        return obj.performed_by.get_full_name() or obj.performed_by.username
+
+    def validate_description(self, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise serializers.ValidationError(_("La actividad realizada es obligatoria."))
+        return normalized
+
+    def validate_hourmeter(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(_("El horómetro no puede ser negativo."))
+        return value
+
+
 class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
 
     technician_name = serializers.SerializerMethodField()
@@ -375,6 +450,13 @@ class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
     )
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     schedule_info = serializers.SerializerMethodField()
+    # `number` se autogenera si no se envía (OT-<fecha>-<placa>).
+    number = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    approved_by_name = serializers.SerializerMethodField()
+    closed_by_name = serializers.SerializerMethodField()
+    activities_count = serializers.IntegerField(source="activities.count", read_only=True)
+    # Semáforo de cumplimiento de la orden (RF010 §10) — mismo helper que el resto.
+    semaphore = serializers.SerializerMethodField()
 
     class Meta:
 
@@ -395,8 +477,20 @@ class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
             "technician_name",
             "status",
             "status_display",
+            "semaphore",
             "report",
             "schedule_info",
+            "approved_by",
+            "approved_by_name",
+            "approved_at",
+            "closed_by",
+            "closed_by_name",
+            "closed_at",
+            "closing_notes",
+            "cancelled_by",
+            "cancelled_at",
+            "cancel_reason",
+            "activities_count",
             "created_at",
         )
 
@@ -408,6 +502,21 @@ class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
             "status_display",
             "technician_name",
             "schedule_info",
+            "semaphore",
+            # La máquina de estados es la única vía de cambio (RF008/§9): estos
+            # campos no se editan por PATCH, solo por las acciones del ViewSet.
+            "status",
+            "approved_by",
+            "approved_by_name",
+            "approved_at",
+            "closed_by",
+            "closed_by_name",
+            "closed_at",
+            "closing_notes",
+            "cancelled_by",
+            "cancelled_at",
+            "cancel_reason",
+            "activities_count",
             "created_at",
         ]
 
@@ -420,6 +529,24 @@ class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
             obj.technician.get_full_name()
             or obj.technician.username
         )
+
+    def get_approved_by_name(self, obj):
+        if not obj.approved_by:
+            return None
+        return obj.approved_by.get_full_name() or obj.approved_by.username
+
+    def get_closed_by_name(self, obj):
+        if not obj.closed_by:
+            return None
+        return obj.closed_by.get_full_name() or obj.closed_by.username
+
+    def validate_number(self, value: str) -> str:
+        return (value or "").strip()
+
+    def create(self, validated_data):
+        if not validated_data.get("number"):
+            validated_data["number"] = generate_work_order_number(validated_data["equipment"])
+        return super().create(validated_data)
 
     def get_schedule_info(self, obj):
         """Si la orden salió de una solicitud programada, devuelve un resumen
@@ -436,6 +563,13 @@ class EquipmentWorkOrderSerializer(serializers.ModelSerializer):
             "is_completed": schedule.is_completed,
         }
 
+    def get_semaphore(self, obj) -> dict:
+        status = obj.schedule_semaphore
+        return {
+            "code": status.value,
+            "label": str(status.label),
+        }
+
     def validate_report(self, value):
         return validate_uploaded_file(value, allowed_extensions=DOCUMENT_EXTENSIONS)
 
@@ -449,6 +583,7 @@ class EquipmentWorkOrderDetailSerializer(EquipmentWorkOrderSerializer):
     evidences = WorkOrderEvidenceSerializer(many=True, read_only=True)
     signatures = WorkOrderSignatureSerializer(many=True, read_only=True)
     cost = WorkOrderCostSerializer(read_only=True)
+    activities = WorkOrderActivitySerializer(many=True, read_only=True)
 
     class Meta(EquipmentWorkOrderSerializer.Meta):
         fields = EquipmentWorkOrderSerializer.Meta.fields + (
@@ -457,6 +592,7 @@ class EquipmentWorkOrderDetailSerializer(EquipmentWorkOrderSerializer):
             "evidences",
             "signatures",
             "cost",
+            "activities",
         )
 
     def get_measurements(self, obj):

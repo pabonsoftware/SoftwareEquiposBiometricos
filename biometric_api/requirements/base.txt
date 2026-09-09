@@ -32,5 +32,11 @@ Pillow==10.3.0
 celery==5.4.0
 redis==5.0.4
 
+# --- WebSockets (notificaciones en tiempo real) ---
+channels==4.2.0
+channels-redis==4.2.1
+
 # --- Server ---
 gunicorn==22.0.0
+daphne==4.1.2
+

@@ -6,6 +6,7 @@ testearlas independientemente del view.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -16,10 +17,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.equipment.models import Equipment, EquipmentStatus
+from api.v1.helpers.semaforizacion import SemaphoreStatus, calculate_status, worst
+from apps.equipment.models import Equipment, EquipmentStatus, EquipmentWorkOrder
 from apps.failures.models import FailureRecord, FailureSeverity
 from apps.maintenance.models import MaintenanceKind, MaintenanceRecord
-from apps.scheduling.models import MaintenanceSchedule
+from apps.scheduling.models import MaintenanceAlert, MaintenanceSchedule
 
 _MAINTENANCE_KINDS = [
     MaintenanceKind.PREVENTIVE,
@@ -27,6 +29,7 @@ _MAINTENANCE_KINDS = [
     MaintenanceKind.REPAIR,
 ]
 
+_SEMAPHORE_CODES = [s.value for s in SemaphoreStatus]
 
 def _equipment_kpis() -> dict:
     by_status = dict(
@@ -57,6 +60,62 @@ def _scheduling_kpis(today: date) -> dict:
             scheduled_date__lte=today + timedelta(days=7),
         ).count(),
         "overdue": pending.filter(scheduled_date__lt=today).count(),
+        # HU011 / HU015: alertas sin atender.
+        "open_alerts": MaintenanceAlert.objects.filter(
+            acknowledged_at__isnull=True
+        ).count(),
+    }
+
+
+def _semaphore_summary(today: date) -> dict:
+    """Conteo 🟢/🟡/🔴 por dominio para la semaforización RF010 §11.
+
+    Se calcula en **Python** sobre una proyección liviana (`.values_list`) en vez
+    de en SQL: así la regla vive SOLO en `calculate_status` y el dashboard no
+    la reescribe con `Case/When`. Escala de sobra para el volumen del proyecto;
+    si algún día no, se añade un campo denormalizado + cron, no una segunda regla.
+    """
+    equipment = Counter()
+    for prev, cal in Equipment.objects.values_list(
+        "next_preventive_date", "next_calibration_date"
+    ):
+        equipment[
+            worst(
+                calculate_status(prev, today, Equipment.PREVENTIVE_WARNING_DAYS),
+                calculate_status(cal, today, Equipment.CALIBRATION_WARNING_DAYS),
+            ).value
+        ] += 1
+
+    schedules = Counter()
+    for sched_date, done in MaintenanceSchedule.objects.values_list(
+        "scheduled_date", "is_completed"
+    ):
+        schedules[
+            calculate_status(
+                sched_date, today, MaintenanceSchedule.WARNING_DAYS, completed=done
+            ).value
+        ] += 1
+
+    work_orders = Counter()
+    for end, start, wo_status in EquipmentWorkOrder.objects.values_list(
+        "end_date", "start_date", "status"
+    ):
+        work_orders[
+            calculate_status(
+                end or start,
+                today,
+                EquipmentWorkOrder.SCHEDULE_WARNING_DAYS,
+                completed=wo_status in EquipmentWorkOrder.CLOSED_STATUSES,
+            ).value
+        ] += 1
+
+    def _shape(counter: Counter) -> dict:
+        return {code: counter.get(code, 0) for code in _SEMAPHORE_CODES}
+
+    return {
+        "equipment": _shape(equipment),
+        "schedules": _shape(schedules),
+        "work_orders": _shape(work_orders),
     }
 
 
@@ -154,6 +213,9 @@ def _maintenance_time_series(today: date) -> list[dict]:
 
 
 def _overdue_schedules(today: date) -> list[dict]:
+    # `is_completed=False AND scheduled_date < today` es exactamente el caso
+    # 🔴 de `calculate_status` para un agendamiento. Aquí se filtra en SQL solo
+    # por eficiencia (top 10); la definición canónica sigue en el helper.
     qs = (
         MaintenanceSchedule.objects.filter(
             is_completed=False, scheduled_date__lt=today
@@ -236,6 +298,7 @@ class DashboardSummaryView(APIView):
             "distributions": {
                 "equipment_by_status": _equipment_distribution(),
                 "failures_by_severity": _failures_distribution(),
+                "semaphore": _semaphore_summary(today),
             },
             "time_series": {
                 "maintenance_by_month": _maintenance_time_series(today),
@@ -263,6 +326,7 @@ _HELPERS = (
     _maintenance_kpis,
     _equipment_distribution,
     _failures_distribution,
+    _semaphore_summary,
     _maintenance_time_series,
     _overdue_schedules,
     _worst_mtbf,

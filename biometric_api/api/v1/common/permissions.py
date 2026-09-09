@@ -124,3 +124,45 @@ class RestrictDeleteToManagement(BasePermission):
 #: Alias heredado — `api/v1/catalog/views.py` y `api/v1/scheduling/views.py`
 #: importan este nombre; el comportamiento es el de `RestrictDeleteToManagement`.
 HasRolePermission = RestrictDeleteToManagement
+
+
+class OperationalAccess(BasePermission):
+    """Datos operativos (órdenes, mantenimientos, agendamientos, alertas).
+
+    - Lectura: Admin, Coordinador o Ingeniero. **El Usuario Operativo NO** —
+      su acceso se limita a equipos y fallas (4.1). Esto cierra el hueco de
+      "el menú no lo muestra, pero el endpoint responde" (RF001 / RFN001).
+    - Crear / editar: Ingeniero o Coordinador.
+    - Eliminar: solo autoridad administrativa (Admin, Coordinador).
+    """
+
+    message = _("Tu rol no tiene acceso a este recurso.")
+    _write_roles = frozenset({Role.INGENIERO, Role.COORDINADOR})
+
+    def has_permission(self, request, view) -> bool:
+        u = getattr(request, "user", None)
+        if not (u and u.is_authenticated) or u.role == Role.USUARIO:
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        if request.method == "DELETE" or getattr(view, "action", None) == "destroy":
+            return u.role in MANAGEMENT_ROLES
+        return u.role in self._write_roles
+
+
+#: Roles que consultan los reportes de gestión (RF012 / HU022 / HU023).
+REPORT_ROLES = frozenset({Role.ADMIN, Role.COORDINADOR, Role.INGENIERO})
+
+
+class ReportsAccess(BasePermission):
+    """Acceso de solo lectura a los reportes de gestión.
+
+    A diferencia de las compuertas de rol, aquí también se restringe la
+    **lectura**: el Usuario Operativo no consulta reportes institucionales.
+    """
+
+    message = _("No tienes permiso para consultar los reportes de gestión.")
+
+    def has_permission(self, request, view) -> bool:
+        u = getattr(request, "user", None)
+        return bool(u and u.is_authenticated and u.role in REPORT_ROLES)

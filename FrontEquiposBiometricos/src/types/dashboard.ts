@@ -19,6 +19,7 @@ export interface DashboardKpis {
   scheduling: {
     next_7_days: number;
     overdue: number;
+    open_alerts: number;
   };
   maintenance: {
     this_month_count: number;
@@ -84,11 +85,18 @@ export interface MyFailureTask {
   reported_at: string;
 }
 
+export type SemaphoreTally = { GREEN: number; YELLOW: number; RED: number };
+
 export interface DashboardSummary {
   kpis: DashboardKpis;
   distributions: {
     equipment_by_status: EquipmentStatusBucket[];
     failures_by_severity: FailureSeverityBucket[];
+    semaphore: {
+      equipment: SemaphoreTally;
+      schedules: SemaphoreTally;
+      work_orders: SemaphoreTally;
+    };
   };
   time_series: {
     maintenance_by_month: MaintenanceMonthBucket[];

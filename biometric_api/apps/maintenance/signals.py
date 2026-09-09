@@ -25,7 +25,7 @@ _RECORD_KIND_FROM_WO = {
     "INSPECTION":MaintenanceKind.INSPECTION
 }
 
-_OPEN_STATUSES = ("PENDING","IN_PROGRESS")
+_OPEN_STATUSES = ("PENDING", "APPROVED", "IN_PROGRESS")
 
 def _unique_wo_number(record:MaintenanceRecord) -> str:
     base = f"OT-{timezone.localdate():%Y%m%d}-M{record.pk}"

@@ -1,3 +1,4 @@
+import type { SemaphorePayload } from "@/lib/semaphore";
 
 export type EquipmentStatus = "ACTIVE" | "INACTIVE" | "IN_MAINTENANCE" | "IN_REPAIR";
 
@@ -75,6 +76,7 @@ export interface Equipment {
   maintenance_frequency_months?: number | null;
   last_preventive?: string | null;
   next_preventive?: string | null;
+  next_preventive_date?: string | null;
 
   // ===============================
   // CALIBRACIÓN
@@ -84,6 +86,15 @@ export interface Equipment {
   calibration_frequenty_months?: number | null;
   last_calibration?: string | null;
   next_calibration?: string | null;
+  next_calibration_date?: string | null;
+
+  // ===============================
+  // SEMAFORIZACIÓN RF010 (calculada por el backend)
+  // ===============================
+
+  preventive_status?: SemaphorePayload | null;
+  calibration_status?: SemaphorePayload | null;
+  maintenance_semaphore?: SemaphorePayload | null;
 
   // ===============================
   // SEGURIDAD ELÉCTRICA

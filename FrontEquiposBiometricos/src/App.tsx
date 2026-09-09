@@ -27,6 +27,9 @@ import { UsuariosPage } from "@/pages/admin/UsuariosPage";
 import { MantenimientosPage } from "@/pages/admin/MantenimientosPage";
 import { OrdenesTrabajoPage } from "@/pages/admin/OrdenesTrabajoPage";
 import { AgendamientosPage } from "@/pages/admin/AgendamientosPage";
+import { AlertasPage } from "@/pages/admin/AlertasPage";
+import { ReportesPage } from "@/pages/admin/ReportesPage";
+import { AuditoriaPage } from "@/pages/admin/AuditoriaPage";
 import { FallasPage } from "@/pages/admin/FallasPage";
 import { PerfilPage } from "@/pages/admin/PerfilPage";
 
@@ -113,9 +116,16 @@ function App() {
                   </Route>
                   <Route element={<ProtectedRoute resource="scheduling" />}>
                     <Route path="agendamientos" element={<AgendamientosPage />} />
+                    <Route path="alertas" element={<AlertasPage />} />
                   </Route>
                   <Route element={<ProtectedRoute resource="failures" />}>
                     <Route path="fallas" element={<FallasPage />} />
+                  </Route>
+                  <Route element={<ProtectedRoute resource="reports" />}>
+                    <Route path="reportes" element={<ReportesPage />} />
+                  </Route>
+                  <Route element={<ProtectedRoute resource="audit" />}>
+                    <Route path="auditoria" element={<AuditoriaPage />} />
                   </Route>
                   <Route element={<ProtectedRoute roles={["admin"]} />}>
                     <Route path="usuarios" element={<UsuariosPage />} />

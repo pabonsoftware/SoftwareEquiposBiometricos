@@ -75,3 +75,22 @@ class TestSendScheduleNotification:
         result = send_schedule_notification(99999)
         assert result == "schedule_not_found"
         assert MaintenanceSchedule.objects.count() == 0
+
+    def test_broadcasts_realtime_event(self, equipment):
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        from apps.realtime.consumers import NOTIFICATION_GROUP
+
+        layer = get_channel_layer()
+        channel = async_to_sync(layer.new_channel)()
+        async_to_sync(layer.group_add)(NOTIFICATION_GROUP, channel)
+
+        schedule = MaintenanceScheduleFactory(equipment=equipment)
+        mail.outbox = []
+        send_schedule_notification(schedule.pk)
+
+        event = async_to_sync(layer.receive)(channel)
+        assert event["payload"]["type"] == "schedule_email_sent"
+        assert event["payload"]["schedule_id"] == schedule.id
+        assert event["payload"]["equipment_asset_tag"] == equipment.asset_tag

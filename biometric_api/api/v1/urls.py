@@ -78,4 +78,12 @@ urlpatterns = [
         "dashboard/",
         include(("api.v1.dashboard.urls", "dashboard"), namespace="dashboard"),
     ),
+    path(
+        "reports/",
+        include(("api.v1.reports.urls", "reports"), namespace="reports"),
+    ),
+    path(
+        "audit/",
+        include(("api.v1.audit.urls", "audit"), namespace="audit"),
+    ),
 ]

@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/Badge";
 import { useAuth } from "@/context/AuthContext";
 import { ROLE_LABEL, can } from "@/lib/permissions";
 import { getApiErrorMessage } from "@/lib/api";
+import { SEMAPHORE_META, type SemaphoreCode } from "@/lib/semaphore";
 import { dashboardService } from "@/services/dashboard.service";
 import type {
   DashboardSummary,
@@ -35,6 +36,7 @@ import type {
   FailureSeverity,
   FailureSeverityBucket,
   MaintenanceMonthBucket,
+  SemaphoreTally,
 } from "@/types/dashboard";
 import type { EquipmentStatus } from "@/types/equipment";
 
@@ -194,6 +196,8 @@ export function DashboardPage() {
           {/* Cada bloque se pinta solo si el rol ve ese módulo en el menú.
               Los grids de a dos colapsan a una sola columna cuando queda un
               único bloque visible (p. ej. el Administrador). */}
+          <SemaphoreOverview data={data.distributions.semaphore} />
+
           <CardGrid>
             {canViewEquipment && (
               <EquipmentStatusChart
@@ -327,15 +331,21 @@ function KpiRow({
       alert: failures.critical_open > 0,
     },
     {
-      label: "Solicitudes · próximos 7 días",
+      label: "Agendamientos · próximos 7 días",
       value: String(scheduling.next_7_days),
       delta:
-        scheduling.overdue > 0
-          ? `${scheduling.overdue} vencidas sin atender`
-          : "Sin vencidas",
+        scheduling.open_alerts > 0
+          ? `${scheduling.open_alerts} alerta(s) sin atender`
+          : scheduling.overdue > 0
+            ? `${scheduling.overdue} vencidos`
+            : "Todo al día",
       Icon: CalendarClock,
-      tone: "text-amber-600 bg-amber-50 dark:bg-amber-950/40",
+      tone:
+        scheduling.open_alerts > 0
+          ? "text-red-600 bg-red-50 dark:bg-red-950/40"
+          : "text-amber-600 bg-amber-50 dark:bg-amber-950/40",
       show: canViewScheduling,
+      alert: scheduling.open_alerts > 0,
     },
     {
       label: "Órdenes de trabajo del mes",
@@ -417,6 +427,48 @@ function EquipmentStatusChart({ data }: { data: EquipmentStatusBucket[] }) {
             />
           </PieChart>
         </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+function SemaphoreOverview({
+  data,
+}: {
+  data: DashboardSummary["distributions"]["semaphore"];
+}) {
+  const rows: { label: string; tally: SemaphoreTally }[] = [
+    { label: "Equipos", tally: data.equipment },
+    { label: "Agendamientos", tally: data.schedules },
+    { label: "Órdenes de trabajo", tally: data.work_orders },
+  ];
+  const cells: { key: keyof SemaphoreTally; tone: SemaphoreCode }[] = [
+    { key: "RED", tone: "RED" },
+    { key: "YELLOW", tone: "YELLOW" },
+    { key: "GREEN", tone: "GREEN" },
+  ];
+  return (
+    <Card>
+      <CardHeader
+        title="Semáforo de cumplimiento"
+        subtitle="🔴 vencido · 🟡 próximo a vencer · 🟢 al día (RF010)"
+      />
+      <div className="flex flex-col divide-y divide-[var(--border)]">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="flex items-center justify-between py-3"
+          >
+            <span className="text-sm font-medium text-app">{row.label}</span>
+            <div className="flex gap-2">
+              {cells.map((c) => (
+                <Badge key={c.key} tone={SEMAPHORE_META[c.tone].tone}>
+                  {row.tally[c.key]}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </Card>
   );

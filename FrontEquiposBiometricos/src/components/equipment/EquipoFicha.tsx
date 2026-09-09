@@ -46,12 +46,19 @@ const KIND_LABEL: Record<MaintenanceKind, string> = {
   PREVENTIVE: "Preventivo",
   CORRECTIVE: "Correctivo",
   REPAIR: "Reparación",
+  CALIBRATION: "Calibración",
+  INSPECTION: "Inspección",
 };
 
-const KIND_TONE: Record<MaintenanceKind, "info" | "warning" | "danger"> = {
+const KIND_TONE: Record<
+  MaintenanceKind,
+  "info" | "warning" | "danger" | "primary" | "neutral"
+> = {
   PREVENTIVE: "info",
   CORRECTIVE: "warning",
   REPAIR: "danger",
+  CALIBRATION: "primary",
+  INSPECTION: "neutral",
 };
 
 // Formatea horas decimales en una unidad legible. El backend manda string|null

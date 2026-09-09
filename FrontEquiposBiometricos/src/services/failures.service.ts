@@ -48,4 +48,12 @@ export const failuresService = {
     );
     return res.data;
   },
+  /** RF007: genera la orden de mantenimiento correctivo a partir de la falla. */
+  async createWorkOrder(id: number, description?: string) {
+    const res = await api.post<FailureReport>(
+      `/failures/${id}/create-work-order/`,
+      description ? { description } : {},
+    );
+    return res.data;
+  },
 };

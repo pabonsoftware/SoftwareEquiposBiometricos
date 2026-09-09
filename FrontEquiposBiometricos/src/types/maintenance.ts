@@ -1,7 +1,12 @@
 import type { AssignedUser } from "@/types/auth";
 import type { ScheduledMaintenance } from "@/types/scheduling";
 
-export type MaintenanceKind = "PREVENTIVE" | "CORRECTIVE" | "REPAIR";
+export type MaintenanceKind =
+  | "PREVENTIVE"
+  | "CORRECTIVE"
+  | "REPAIR"
+  | "CALIBRATION"
+  | "INSPECTION";
 
 export interface MaintenanceRecord {
   id: number;

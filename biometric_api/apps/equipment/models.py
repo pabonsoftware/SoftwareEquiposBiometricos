@@ -1,9 +1,12 @@
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from api.v1.helpers.semaforizacion import SemaphoreStatus, calculate_status, worst
 from apps.branches.models import Branch
 
 from .managers import EquipmentManager
@@ -67,14 +70,18 @@ class WorkOrderType(models.TextChoices):
     INSPECTION = "INSPECTION",_("Inspección")
 
 class WorkOrderStatus(models.TextChoices):
+    # Máquina de estados única (RF008/RF011/§9). Las transiciones válidas viven
+    # en apps/equipment/workflow.py y solo se ejecutan vía las acciones del
+    # ViewSet (approve / start / complete / cancel), nunca por PATCH directo.
+    PENDING = "PENDING", _("Pendiente")
 
-    PENDING = "PENDING",_("Pendiente")
+    APPROVED = "APPROVED", _("Aprobada")
 
-    IN_PROGRESS = "IN_PROGRESS",_("En proceso")
+    IN_PROGRESS = "IN_PROGRESS", _("En proceso")
 
     FINISHED = "FINISHED", _("Terminada")
 
-    CANCELLED = "CANCELLED",_("Cancelada")
+    CANCELLED = "CANCELLED", _("Cancelada")
 
 class EvidenceType(models.TextChoices):
 
@@ -199,7 +206,11 @@ class Equipment(models.Model):
     last_calibration = models.CharField(_("Última calibración"),max_length=120,blank=True)
     last_preventive = models.CharField(_("Último preventivo"),max_length=120,blank=True)
     next_preventive = models.CharField(_("Próximo preventivo"),max_length=120,blank=True)
+    next_preventive_date = models.DateField(_("Fecha de Próximo Preventivo"),null=True,blank=True)
     next_calibration = models.CharField(_("Próxima calibración"),max_length=120,blank=True)
+    next_calibration_date = models.DateField(
+        _("Fecha de Próxima Calibración"), null=True, blank=True
+    )
     corrective_count = models.PositiveIntegerField(_("Número de correctivos."),default=0)
 
     qr_code = models.FileField(_("Código QR"), upload_to="equipment/qr/", blank=True)
@@ -230,6 +241,11 @@ class Equipment(models.Model):
 
     objects = EquipmentManager()
 
+    # Ventanas de aviso del semáforo (RF010). Días antes del vencimiento en que
+    # el indicador pasa a 🟡. Aquí, no como número mágico dentro del helper.
+    PREVENTIVE_WARNING_DAYS = 30
+    CALIBRATION_WARNING_DAYS = 45
+
     class Meta:
         verbose_name = _("Equipo biomédico")
         verbose_name_plural = _("Equipos biomédicos")
@@ -246,6 +262,35 @@ class Equipment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.asset_tag})"
+
+    @property
+    def preventive_status(self) -> SemaphoreStatus:
+        """Semáforo del mantenimiento preventivo (RF010).
+
+        Calculado al vuelo: siempre refleja la fecha de hoy, sin campo guardado
+        ni tarea que lo mantenga. `timezone.localdate()` (no `date.today()`)
+        para respetar la zona horaria del proyecto, igual que el resto del código.
+        """
+        return calculate_status(
+            due_date=self.next_preventive_date,
+            today=timezone.localdate(),
+            warning_days=self.PREVENTIVE_WARNING_DAYS,
+        )
+
+    @property
+    def calibration_status(self) -> SemaphoreStatus:
+        """Semáforo del aseguramiento metrológico / calibración (RF010)."""
+        return calculate_status(
+            due_date=self.next_calibration_date,
+            today=timezone.localdate(),
+            warning_days=self.CALIBRATION_WARNING_DAYS,
+        )
+
+    @property
+    def maintenance_semaphore(self) -> SemaphoreStatus:
+        """Semáforo global del equipo: el *peor* entre preventivo y calibración.
+        Es el que se pinta en el listado y en el dashboard."""
+        return worst(self.preventive_status, self.calibration_status)
 
 
 class EquipmentInstruction(models.Model):
@@ -403,16 +448,71 @@ class EquipmentWorkOrder(models.Model):
         related_name="work_order",
     )
 
+    # --- Trazabilidad de la máquina de estados (RF008/RF011/RFN009) ---
+    approved_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_work_orders",
+        verbose_name=_("Aprobada por"),
+    )
+    approved_at = models.DateTimeField(_("Aprobada el"), null=True, blank=True)
+    closed_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="closed_work_orders",
+        verbose_name=_("Cerrada por"),
+    )
+    closed_at = models.DateTimeField(_("Cerrada el"), null=True, blank=True)
+    closing_notes = models.TextField(_("Observaciones de cierre"), blank=True)
+    cancelled_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cancelled_work_orders",
+        verbose_name=_("Cancelada por"),
+    )
+    cancelled_at = models.DateTimeField(_("Cancelada el"), null=True, blank=True)
+    cancel_reason = models.TextField(_("Motivo de cancelación"), blank=True)
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
 
+    # Ventana de aviso del semáforo de la orden (RF010): pocos días, porque una
+    # orden abierta es trabajo en curso, no una fecha lejana.
+    SCHEDULE_WARNING_DAYS = 3
+    CLOSED_STATUSES = (WorkOrderStatus.FINISHED, WorkOrderStatus.CANCELLED)
+
     class Meta:
         ordering = ["-start_date"]
+        indexes = [
+            models.Index(fields=["status"], name="workorder_status_idx"),
+            models.Index(fields=["equipment", "-start_date"], name="workorder_eq_date_idx"),
+        ]
 
     def __str__(self):
 
         return self.number
+
+    @property
+    def schedule_semaphore(self) -> SemaphoreStatus:
+        """Semáforo de cumplimiento de la orden (RF010 §10).
+
+        - TERMINADA / CANCELADA → 🟢 (sin acción pendiente).
+        - Si no, se compara la fecha límite (`end_date` planificada, o
+          `start_date` si no hay) contra hoy: pasada → 🔴, cercana → 🟡.
+        """
+        return calculate_status(
+            due_date=self.end_date or self.start_date,
+            today=timezone.localdate(),
+            warning_days=self.SCHEDULE_WARNING_DAYS,
+            completed=self.status in self.CLOSED_STATUSES,
+        )
 
 class WorkOrderSparePart(models.Model):
 
@@ -526,5 +626,56 @@ class WorkOrderCost(models.Model):
         decimal_places=2,
         default=Decimal("0"),
     )
+
+
+class WorkOrderActivity(models.Model):
+    """Tarea/actividad técnica registrada durante la ejecución de la orden
+    (RF009). Al registrar la primera, la orden pasa de APROBADA a EN_PROCESO.
+    El cierre de la orden (RF011) exige al menos una de estas actividades."""
+
+    work_order = models.ForeignKey(
+        EquipmentWorkOrder,
+        on_delete=models.CASCADE,
+        related_name="activities",
+        verbose_name=_("Orden de trabajo"),
+    )
+    performed_at = models.DateTimeField(_("Fecha y hora"), default=timezone.now)
+    performed_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="work_order_activities",
+        verbose_name=_("Responsable"),
+    )
+    description = models.TextField(_("Actividad realizada"))
+    findings = models.TextField(_("Hallazgos / diagnóstico encontrado"), blank=True)
+    recommendations = models.TextField(_("Recomendaciones"), blank=True)
+    hourmeter = models.DecimalField(
+        _("Horómetro / kilometraje"),
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    equipment_status_after = models.CharField(
+        _("Estado operativo del equipo tras la intervención"),
+        max_length=20,
+        choices=EquipmentStatus.choices,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Actividad de orden de trabajo")
+        verbose_name_plural = _("Actividades de orden de trabajo")
+        ordering = ["performed_at", "id"]
+        indexes = [
+            models.Index(fields=["work_order", "performed_at"], name="wo_activity_wo_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.work_order.number} · {self.performed_at:%Y-%m-%d %H:%M}"
 
 

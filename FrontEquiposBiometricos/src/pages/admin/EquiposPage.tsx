@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
+import { SemaphoreBadge } from "@/components/ui/SemaphoreBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EquipoFicha } from "@/components/equipment/EquipoFicha";
 import { MarcasModelosPanel } from "@/pages/admin/equipos/MarcasModelosPanel";
@@ -608,19 +609,20 @@ export function EquiposPage() {
                     <th className="px-4 py-3 font-medium">Asset tag</th>
                     <th className="px-4 py-3 font-medium">Sede / Ubicación</th>
                     <th className="px-4 py-3 font-medium">Riesgo</th>
+                    <th className="px-4 py-3 font-medium">Mantenimiento</th>
                     <th className="px-4 py-3 font-medium">Estado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
                   {loading ? (
                     <tr>
-                      <td colSpan={5} className="py-10 text-center text-app-muted">
+                      <td colSpan={6} className="py-10 text-center text-app-muted">
                         Cargando...
                       </td>
                     </tr>
                   ) : items.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-10 text-center text-app-muted">
+                      <td colSpan={6} className="py-10 text-center text-app-muted">
                         No se encontraron equipos con los filtros actuales.
                       </td>
                     </tr>
@@ -669,6 +671,11 @@ export function EquiposPage() {
                             <Badge tone={RISK_TONE[eq.risk_class]}>
                               {eq.risk_class}
                             </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <SemaphoreBadge
+                              payload={eq.maintenance_semaphore}
+                            />
                           </td>
                           <td
                             className="px-4 py-3"

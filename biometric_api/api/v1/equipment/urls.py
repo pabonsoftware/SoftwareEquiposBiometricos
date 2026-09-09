@@ -6,6 +6,7 @@ from .views import (
     EquipmentInstructionViewSet,
     EquipmentViewSet,
     EquipmentWorkOrderViewSet,
+    WorkOrderActivityViewSet,
     WorkOrderCostViewSet,
     WorkOrderEvidenceViewSet,
     WorkOrderMeasurementViewSet,
@@ -25,6 +26,7 @@ router.register(r"work-order-measurements",WorkOrderMeasurementViewSet,basename=
 router.register(r"work-order-evidences",WorkOrderEvidenceViewSet,basename="work-order-evidence")
 router.register(r"work-order-signatures",WorkOrderSignatureViewSet,basename="work-order-signature")
 router.register(r"work-order-costs",WorkOrderCostViewSet,basename="work-order-cost")
+router.register(r"work-order-activities",WorkOrderActivityViewSet,basename="work-order-activity")
 router.register(r"",EquipmentViewSet,basename="equipment")
 
 urlpatterns = router.urls

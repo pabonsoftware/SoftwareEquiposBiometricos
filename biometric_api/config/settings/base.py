@@ -8,6 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -42,6 +43,9 @@ ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
 # Apps
 # ---------------------------------------------------------------------------
 DJANGO_APPS = [
+    # `daphne` va PRIMERO: channels 4 lo necesita para que `runserver` sirva
+    # ASGI (y con ello los WebSockets) en desarrollo.
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -51,6 +55,7 @@ DJANGO_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    "channels",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -71,6 +76,7 @@ LOCAL_APPS: list[str] = [
     "apps.scheduling",
     "apps.failures",
     "apps.audit",
+    "apps.realtime",
     # Las apps de dominio se irán agregando incrementalmente:
     # "apps.core",
 ]
@@ -120,6 +126,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
+
+# ---------------------------------------------------------------------------
+# Channels (WebSockets — notificaciones en tiempo real)
+# ---------------------------------------------------------------------------
+# Redis como capa de canales: el proceso que emite (Celery worker) y el que
+# mantiene el socket (daphne/web) son distintos, así que una capa en memoria
+# no serviría. Los tests la sobreescriben por InMemoryChannelLayer.
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [env("REDIS_URL", default="redis://localhost:6379/0")],
+        },
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Database
@@ -367,6 +388,15 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+
+# Tareas periódicas (Celery Beat). Requiere `celery -A config beat`.
+CELERY_BEAT_SCHEDULE = {
+    "scan-maintenance-alerts": {
+        # HU011 / HU015: barrido diario de agendamientos por vencer / vencidos.
+        "task": "apps.scheduling.tasks.scan_maintenance_alerts",
+        "schedule": crontab(hour=6, minute=0),
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Notificaciones de mantenimiento

@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCheck, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCheck,
+  Pencil,
+  Plus,
+  Trash2,
+  Wrench,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -186,6 +193,25 @@ export function FallasPage() {
     }
   };
 
+  // RF007: la falla origina la orden de mantenimiento correctivo.
+  const [creatingWO, setCreatingWO] = useState<number | null>(null);
+  const generateCorrective = async (f: FailureReport) => {
+    setCreatingWO(f.id);
+    try {
+      const updated = await failuresService.createWorkOrder(f.id);
+      const number = updated.corrective_work_order_info?.number ?? "";
+      alert(
+        `Orden correctiva ${number} creada (pendiente de aprobación). ` +
+          `Continúa el flujo desde Órdenes de trabajo.`,
+      );
+      await load();
+    } catch (err) {
+      alert(getApiErrorMessage(err, "No se pudo generar la orden correctiva"));
+    } finally {
+      setCreatingWO(null);
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-screen-2xl flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -306,9 +332,17 @@ export function FallasPage() {
                       {new Date(f.reported_at).toLocaleString()}
                     </td>
                     <td className="py-3">
-                      <Badge tone={f.resolved ? "success" : "warning"}>
-                        {f.resolved ? "Resuelta" : "Abierta"}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge tone={f.resolved ? "success" : "warning"}>
+                          {f.resolved ? "Resuelta" : "Abierta"}
+                        </Badge>
+                        {f.corrective_work_order_info && (
+                          <span className="font-mono text-xs text-app-muted">
+                            OT {f.corrective_work_order_info.number} ·{" "}
+                            {f.corrective_work_order_info.status_display}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3">
                       <div className="flex justify-end gap-2">
@@ -325,6 +359,17 @@ export function FallasPage() {
                             title={canEdit ? undefined : NO_PERMISSION_HINT}
                           >
                             Resolver
+                          </Button>
+                        )}
+                        {canEdit && !f.corrective_work_order_info && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            leftIcon={<Wrench size={14} />}
+                            loading={creatingWO === f.id}
+                            onClick={() => void generateCorrective(f)}
+                          >
+                            Generar correctivo
                           </Button>
                         )}
                         {canEdit && (

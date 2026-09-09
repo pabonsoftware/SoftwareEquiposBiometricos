@@ -3,10 +3,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 
 from api.v1.common.mixins import AuditLogMixin
-from api.v1.common.permissions import (
-    CoordBiomedicalPermission,
-    EngineerBiomedicalPermissions,
-)
+from api.v1.common.permissions import OperationalAccess
 from apps.maintenance.models import MaintenanceRecord
 
 from .filters import MaintenanceRecordFilter
@@ -19,11 +16,9 @@ class MaintenanceRecordViewSet(AuditLogMixin, viewsets.ModelViewSet):
     queryset = MaintenanceRecord.objects.all()
     serializer_class = MaintenanceRecordSerializer
     # El Ingeniero ejecuta y documenta la intervención; el Coordinador autoriza
-    # la orden, coordina la asignación y gestiona el cierre formal.
-    permission_classes = (
-        IsAuthenticated,
-        EngineerBiomedicalPermissions | CoordBiomedicalPermission,
-    )
+    # la orden, coordina la asignación y gestiona el cierre formal. El Usuario
+    # Operativo no ve los registros de mantenimiento (RF001).
+    permission_classes = (IsAuthenticated, OperationalAccess)
     parser_classes = (JSONParser, MultiPartParser, FormParser)
     filterset_class = MaintenanceRecordFilter
     search_fields = (

@@ -1,13 +1,32 @@
 # Carga masiva de equipos
 
-Deja aquí un archivo `.csv` con los equipos y ejecuta desde `biometric_api/`:
+Deja aquí un archivo `.csv` con los equipos. Se procesan **todos** los `.csv` de
+esta carpeta (se ignoran `plantilla_equipos.csv`, los que empiezan por `_` y los
+temporales de Excel `~$`).
+
+## Con Docker (recomendado)
+
+1. Arrastra tu `.csv` a esta carpeta (`biometric_api/imports/equipment/`).
+2. Levanta el stack — en el primer arranque ya importa lo que haya aquí:
+
+   ```bash
+   docker compose up --build
+   ```
+
+3. Para volver a importar tras dejar **otro** `.csv` (sin reiniciar `web`):
+
+   ```bash
+   docker compose run --rm importer
+   ```
+
+`web` también reimporta en cada reinicio (`AUTO_IMPORT_EQUIPMENT=true` en `.env`).
+Es idempotente: `--update` reprocesa las placas existentes.
+
+## Sin Docker
 
 ```bash
-python manage.py import_equipment
+python manage.py import_equipment           # procesa todos los .csv de esta carpeta
 ```
-
-Se procesan **todos** los `.csv` de esta carpeta (se ignoran `plantilla_equipos.csv`,
-los que empiezan por `_` y los temporales de Excel `~$`).
 
 - Si todo salió bien, el archivo se mueve a `processed/`.
 - Si hubo filas con error, **se queda donde está** y se escribe un `*.errores.txt`

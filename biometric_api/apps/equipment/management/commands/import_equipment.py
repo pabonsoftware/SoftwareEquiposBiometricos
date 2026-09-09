@@ -180,6 +180,16 @@ COLUMNS: dict[str, dict] = {
     "last_preventive": {"kind": "text", "aliases": ("ultimo_preventivo",)},
     "next_preventive": {"kind": "text", "aliases": ("proximo_preventivo",)},
     "next_calibration": {"kind": "text", "aliases": ("proxima_calibracion",)},
+    # Fechas reales que alimentan el semáforo (RF010). Si no vienen, la
+    # recurrencia (RF006) las calcula al registrar el primer mantenimiento.
+    "next_preventive_date": {
+        "kind": "date",
+        "aliases": ("fecha_proximo_preventivo", "proximo_preventivo_fecha"),
+    },
+    "next_calibration_date": {
+        "kind": "date",
+        "aliases": ("fecha_proxima_calibracion", "proxima_calibracion_fecha"),
+    },
     "corrective_count": {"kind": "int", "aliases": ("numero_correctivos", "correctivos")},
     "mtbf_hours": {"kind": "decimal", "aliases": ("mtbf",)},
     "mttr_hours": {"kind": "decimal", "aliases": ("mttr",)},

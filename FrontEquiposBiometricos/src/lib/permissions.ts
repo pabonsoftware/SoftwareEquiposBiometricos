@@ -8,9 +8,11 @@ export type Resource =
   | "maintenance"
   | "work_orders"
   | "scheduling"
-  | "failures";
+  | "failures"
+  | "reports"
+  | "audit";
 
-export type Action = "view" | "create" | "edit" | "delete";
+export type Action = "view" | "create" | "edit" | "delete" | "approve";
 
 // 4.1. Roles del sistema — 4 roles.
 export const ALL_ROLES: Rol[] = ["admin", "coordinador", "ingeniero", "usuario"];
@@ -35,6 +37,8 @@ const matrix: Matrix = {
     branches: ["view", "create", "edit", "delete"],
     catalog: ["view", "create", "edit", "delete"],
     equipment: ["view", "create", "edit", "delete"],
+    reports: ["view"],
+    audit: ["view"],
   },
 
   // 4.1.2 — Aprueba los cronogramas y las solicitudes de mantenimiento, asigna
@@ -45,9 +49,12 @@ const matrix: Matrix = {
     equipment: ["view"],
     catalog: ["view"],
     maintenance: ["view", "create", "edit", "delete"],
-    work_orders: ["view", "create", "edit", "delete"],
+    // `approve` cubre aprobar / cancelar la orden y cerrarla formalmente (4.1.2).
+    work_orders: ["view", "create", "edit", "delete", "approve"],
     scheduling: ["view", "create", "edit", "delete"],
     failures: ["view", "edit"],
+    reports: ["view"],
+    audit: ["view"],
   },
 
   // 4.1.3 — Reúne la evaluación técnica y la ejecución del mantenimiento: emite
@@ -62,6 +69,7 @@ const matrix: Matrix = {
     work_orders: ["view", "create", "edit"],
     scheduling: ["view", "create", "edit"],
     failures: ["view", "edit"],
+    reports: ["view"],
   },
 
   // Usuario Operativo — personal asistencial que opera los equipos: consulta

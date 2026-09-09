@@ -48,21 +48,31 @@ Esto levanta:
 - `biometric_db` — PostgreSQL en `localhost:5432`
 - `biometric_redis` — Redis en `localhost:6379`
 - `biometric_web` — Django dev server en `localhost:8000`
+- `biometric_celery_worker` / `biometric_celery_beat` — tareas y programador
+- `biometric_flower` (`localhost:5555`) · `biometric_mailpit` (`localhost:8025`)
 
-El `entrypoint.sh` espera a que Postgres esté listo y corre `migrate` automáticamente.
+En el primer arranque, `web` (vía `docker/entrypoint.sh`):
+1. espera a Postgres y corre `migrate`;
+2. crea el superusuario `DJANGO_SUPERUSER_*` del `.env` si no hay ninguno
+   (por defecto `admin` / `Admin.2026`);
+3. importa los `.csv` que haya en `imports/equipment/` (`AUTO_IMPORT_EQUIPMENT`).
 
-### 3. Verificar que está corriendo
+### 3. Cargar equipos desde un CSV
+
+Arrastra tu `.csv` a `imports/equipment/` y:
+
+```bash
+docker compose run --rm importer     # importa lo que haya en imports/equipment/
+```
+
+`web` también reimporta en cada reinicio. Ver `imports/equipment/README.md` para
+el formato del CSV (usa `plantilla_equipos.csv` como base).
+
+### 4. Verificar que está corriendo
 
 - API root: http://localhost:8000/api/v1/
 - Swagger UI: http://localhost:8000/api/docs/
-- Redoc: http://localhost:8000/api/redoc/
-- Admin: http://localhost:8000/admin/
-
-### 4. Crear superusuario (opcional)
-
-```bash
-docker-compose exec web python manage.py createsuperuser
-```
+- Admin: http://localhost:8000/admin/  (`admin` / `Admin.2026`)
 
 ### 5. Detener
 

@@ -1,6 +1,6 @@
 from django_filters import rest_framework as filters
 
-from apps.scheduling.models import MaintenanceSchedule
+from apps.scheduling.models import MaintenanceAlert, MaintenanceSchedule
 
 
 class MaintenanceScheduleFilter(filters.FilterSet):
@@ -38,3 +38,15 @@ class MaintenanceScheduleFilter(filters.FilterSet):
                 assigned_engineer__isnull=True, assigned_technician__isnull=True
             )
         return queryset
+
+
+class MaintenanceAlertFilter(filters.FilterSet):
+    equipment = filters.NumberFilter(field_name="equipment_id")
+    branch = filters.NumberFilter(field_name="equipment__branch_id")
+    alert_type = filters.CharFilter(field_name="alert_type", lookup_expr="iexact")
+    # `open=true` → sin atender; `open=false` → historial de atendidas.
+    open = filters.BooleanFilter(field_name="acknowledged_at", lookup_expr="isnull")
+
+    class Meta:
+        model = MaintenanceAlert
+        fields = ("equipment", "branch", "alert_type", "open")

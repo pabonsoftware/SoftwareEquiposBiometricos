@@ -3,9 +3,11 @@ import { useNavigate } from "react-router-dom";
 import {
   Bell,
   CalendarClock,
+  CalendarRange,
   Check,
   Pencil,
   Plus,
+  Sparkles,
   Trash2,
   User,
   Wrench,
@@ -16,6 +18,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
+import { SemaphoreBadge } from "@/components/ui/SemaphoreBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TechnicianSelect } from "@/components/ui/TechnicianSelect";
 import { assignedUserName, assignmentPayload } from "@/lib/users";
@@ -28,6 +31,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import type { Equipment } from "@/types/equipment";
 import type { Usuario } from "@/types/auth";
 import type {
+  RecurringScheduleKind,
   ScheduleInput,
   ScheduleKind,
   ScheduledMaintenance,
@@ -37,8 +41,14 @@ const TECHNICIAN_ROLES = ["tecnico", "ingeniero"];
 
 const KIND_LABEL: Record<ScheduleKind, string> = {
   PREVENTIVE: "Preventivo",
+  CALIBRATION: "Calibración",
   REPAIR: "Reparación",
 };
+
+const PLAN_KIND_OPTIONS: { value: RecurringScheduleKind; label: string }[] = [
+  { value: "PREVENTIVE", label: "Preventivo" },
+  { value: "CALIBRATION", label: "Calibración" },
+];
 
 const empty: ScheduleInput = {
   equipment: 0,
@@ -229,6 +239,34 @@ export function AgendamientosPage() {
     }
   };
 
+  // RF006 — generador de cronograma anual
+  const [planOpen, setPlanOpen] = useState(false);
+  const [planForm, setPlanForm] = useState<{
+    equipment: number;
+    year: number;
+    kind: RecurringScheduleKind;
+  }>({ equipment: 0, year: new Date().getFullYear(), kind: "PREVENTIVE" });
+  const [planSaving, setPlanSaving] = useState(false);
+
+  const submitPlan = async () => {
+    if (!planForm.equipment) return;
+    setPlanSaving(true);
+    try {
+      const res = await schedulingService.generatePlan(planForm);
+      setPlanOpen(false);
+      alert(
+        res.created > 0
+          ? `Se generaron ${res.created} agendamiento(s) para ${planForm.year}.`
+          : `El equipo ya tenía el cronograma ${planForm.year} completo.`,
+      );
+      await load();
+    } catch (err) {
+      alert(getApiErrorMessage(err, "No se pudo generar el cronograma"));
+    } finally {
+      setPlanSaving(false);
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-screen-2xl flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -242,9 +280,25 @@ export function AgendamientosPage() {
           </p>
         </div>
         {canCreate && (
-          <Button leftIcon={<Plus size={16} />} onClick={openCreate}>
-            Nuevo agendamiento
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              leftIcon={<CalendarRange size={16} />}
+              onClick={() => {
+                setPlanForm({
+                  equipment: equipment[0]?.id ?? 0,
+                  year: new Date().getFullYear(),
+                  kind: "PREVENTIVE",
+                });
+                setPlanOpen(true);
+              }}
+            >
+              Generar cronograma anual
+            </Button>
+            <Button leftIcon={<Plus size={16} />} onClick={openCreate}>
+              Nuevo agendamiento
+            </Button>
+          </div>
         )}
       </div>
 
@@ -333,11 +387,34 @@ export function AgendamientosPage() {
                       </div>
                     </td>
                     <td className="py-3">
-                      <Badge tone={s.kind === "PREVENTIVE" ? "info" : "danger"}>
-                        {KIND_LABEL[s.kind]}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge
+                          tone={
+                            s.kind === "REPAIR"
+                              ? "danger"
+                              : s.kind === "CALIBRATION"
+                                ? "primary"
+                                : "info"
+                          }
+                        >
+                          {KIND_LABEL[s.kind]}
+                        </Badge>
+                        {s.auto_generated && (
+                          <span
+                            className="inline-flex items-center gap-1 text-xs text-app-muted"
+                            title="Creado por la recurrencia o el cronograma anual"
+                          >
+                            <Sparkles size={11} /> Automático
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="py-3 text-app-muted">{s.scheduled_date}</td>
+                    <td className="py-3 text-app-muted">
+                      <div className="flex flex-col items-start gap-1">
+                        <span>{s.scheduled_date}</span>
+                        <SemaphoreBadge payload={s.semaphore} showDays />
+                      </div>
+                    </td>
                     <td className="py-3 text-app-muted">
                       {labelForScheduleTechnician(s) ? (
                         <span className="inline-flex items-center gap-1.5">
@@ -515,6 +592,67 @@ export function AgendamientosPage() {
         onConfirm={confirmDelete}
         onClose={() => setToDelete(null)}
       />
+
+      <Modal
+        open={planOpen}
+        onClose={() => setPlanOpen(false)}
+        title="Generar cronograma anual"
+        size="md"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-app-muted">
+            Crea los agendamientos del año según la <strong>frecuencia</strong>{" "}
+            configurada en la hoja de vida del equipo. Salta los meses que ya
+            tienen uno (es seguro repetirlo).
+          </p>
+          <Select
+            label="Equipo"
+            value={String(planForm.equipment || "")}
+            onChange={(e) =>
+              setPlanForm({ ...planForm, equipment: Number(e.target.value) })
+            }
+            options={equipmentOptions}
+            placeholder="Selecciona un equipo"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Año"
+              type="number"
+              value={String(planForm.year)}
+              onChange={(e) =>
+                setPlanForm({ ...planForm, year: Number(e.target.value) })
+              }
+            />
+            <Select
+              label="Tipo"
+              value={planForm.kind}
+              onChange={(e) =>
+                setPlanForm({
+                  ...planForm,
+                  kind: e.target.value as RecurringScheduleKind,
+                })
+              }
+              options={PLAN_KIND_OPTIONS}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => setPlanOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              loading={planSaving}
+              disabled={!planForm.equipment}
+              onClick={() => void submitPlan()}
+            >
+              Generar
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

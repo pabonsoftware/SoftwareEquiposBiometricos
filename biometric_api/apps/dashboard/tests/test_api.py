@@ -157,6 +157,17 @@ class TestDistributions:
             "resolved": 1,
         }
 
+    def test_semaphore_summary_uses_shared_rule(self, auth_client, branch):
+        today = timezone.localdate()
+        EquipmentFactory(branch=branch, next_preventive_date=today - timedelta(days=1))   # RED
+        EquipmentFactory(branch=branch, next_preventive_date=today + timedelta(days=10))  # YELLOW
+        EquipmentFactory(branch=branch, next_preventive_date=today + timedelta(days=365)) # GREEN
+        EquipmentFactory(branch=branch, next_preventive_date=None)                        # GREEN
+
+        summary = auth_client.get(SUMMARY_URL).json()["distributions"]["semaphore"]
+        assert summary["equipment"] == {"GREEN": 2, "YELLOW": 1, "RED": 1}
+        assert set(summary) == {"equipment", "schedules", "work_orders"}
+
 
 class TestTimeSeries:
     def test_six_months_with_gaps_filled(self, auth_client, equipment):
